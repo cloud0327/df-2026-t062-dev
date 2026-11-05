@@ -1,0 +1,15 @@
+{
+  "hosting": {
+    "public": "dist",
+    "headers": [
+      {
+        "source": "/version.json",
+        "headers": [{ "key": "Cache-Control", "value": "no-store" }]
+      },
+      {
+        "source": "/api/health.json",
+        "headers": [{ "key": "Cache-Control", "value": "no-store" }]
+      }
+    ]
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "df-2026-t062-dev",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "24.22.2"
+  },
+  "scripts": {
+    "dev": "vite",
+    "dev:api": "node --watch api/index.ts",
+    "start:api": "node api/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test",
+    "build": "vite build && node scripts/write-version.mjs",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "typescript": "7.0.2",
+    "vite": "8.3.5"
+  }
+}
