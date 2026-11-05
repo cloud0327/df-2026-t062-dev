@@ -2,6 +2,8 @@
 
 CI/CDを確認するためのWebアプリです。ローカルではNode.js API、公開サイトでは模擬応答のJSONを使います。
 
+[デモサイトを開く](https://df-2026-t062-demo-327.web.app)
+
 ## ローカル開発
 
 Node.jsは `.nvmrc` のバージョンを使います。初回に `npm ci` を実行します。

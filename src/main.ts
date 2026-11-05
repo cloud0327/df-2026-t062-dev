@@ -13,11 +13,13 @@ const checkButton = button
 async function checkHealth() {
   checkButton.disabled = true
   statusLabel.textContent = '応答を確認しています…'
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), 5000)
 
   try {
     const response = await fetch('/api/health.json', {
       cache: 'no-store',
-      signal: AbortSignal.timeout(5000),
+      signal: controller.signal,
     })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
 
@@ -32,6 +34,7 @@ async function checkHealth() {
   } catch {
     statusLabel.textContent = '応答を確認できませんでした。もう一度お試しください。'
   } finally {
+    window.clearTimeout(timeout)
     checkButton.disabled = false
   }
 }

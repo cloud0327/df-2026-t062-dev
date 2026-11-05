@@ -6,4 +6,5 @@ export default defineConfig({
       '/api/': process.env.API_ORIGIN ?? 'http://127.0.0.1:8787',
     },
   },
+  preview: { proxy: {} },
 })
