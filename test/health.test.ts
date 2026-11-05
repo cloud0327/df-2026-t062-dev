@@ -26,7 +26,7 @@ test('returns the live API status as uncached JSON', async () => {
   assert.equal(response.status, 200)
   assert.match(response.headers.get('content-type') ?? '', /^application\/json\b/)
   assert.equal(response.headers.get('cache-control'), 'no-store')
-  assert.deepEqual(await response.json(), { status: 'ok', source: 'failure-probe' })
+  assert.deepEqual(await response.json(), { status: 'ok', source: 'api' })
 })
 
 test('returns 404 for an unknown endpoint', async () => {
