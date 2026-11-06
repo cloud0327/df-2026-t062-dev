@@ -20,13 +20,18 @@ resource "google_iam_workload_identity_pool_provider" "github" {
     "attribute.repository_owner_id" = "assertion.repository_owner_id"
     "attribute.ref"                 = "assertion.ref"
     "attribute.event_name"          = "assertion.event_name"
+    "attribute.repository"          = "assertion.repository"
+    "attribute.workflow_ref"        = "assertion.workflow_ref"
+    "attribute.environment"         = "assertion.environment"
   }
 
   attribute_condition = join(" && ", [
     "assertion.repository_id == '${var.github_repository_id}'",
     "assertion.repository_owner_id == '${var.github_repository_owner_id}'",
     "assertion.ref == 'refs/heads/main'",
-    "assertion.event_name in ['push', 'workflow_dispatch']",
+    "assertion.event_name == 'workflow_dispatch'",
+    "assertion.workflow_ref == assertion.repository + '/.github/workflows/cloud-run.yml@refs/heads/main'",
+    "assertion.environment == 'cloud-run'",
   ])
 }
 

@@ -73,8 +73,8 @@ resource "google_cloud_run_v2_service" "api" {
   }
 
   lifecycle {
-    # Releases update the image only. Terraform continues to manage the service settings.
-    ignore_changes = [template[0].containers[0].image, client, client_version]
+    # After bootstrap, the release workflow owns the image and revision traffic.
+    ignore_changes = [template[0].containers[0].image, traffic, client, client_version]
   }
 
   depends_on = [google_project_service.required]

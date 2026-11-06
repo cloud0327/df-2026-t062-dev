@@ -6,11 +6,19 @@ on:
     paths:
       - 'infra/gcp/**'
       - '.github/workflows/terraform.yml'
+      - '.github/workflows/cloud-run.yml'
+      - 'scripts/release-cloud-run.sh'
+      - 'scripts/smoke-api-container.sh'
+      - 'test/cloud-run-release.sh'
   push:
     branches: [main]
     paths:
       - 'infra/gcp/**'
       - '.github/workflows/terraform.yml'
+      - '.github/workflows/cloud-run.yml'
+      - 'scripts/release-cloud-run.sh'
+      - 'scripts/smoke-api-container.sh'
+      - 'test/cloud-run-release.sh'
   workflow_dispatch:
 
 permissions:
@@ -39,3 +47,8 @@ jobs:
       - run: terraform init -backend=false -input=false -lockfile=readonly
       - run: terraform validate
       - run: terraform test
+      - name: Verify release and rollback with local stubs
+        working-directory: .
+        run: |
+          bash -n scripts/smoke-api-container.sh
+          bash test/cloud-run-release.sh

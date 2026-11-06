@@ -39,11 +39,7 @@ curl http://127.0.0.1:8787/api/health.json
 PRでもGitHub Actionsの`Verify`がDockerイメージをビルドして同じAPI応答を検証します。
 Google Cloudへの認証・Artifact Registryへのpush・Cloud Runデプロイは実行しません。
 
-請求先が確定した後はWorkload Identity Federation（WIF）でGitHub Actionsを接続し、
-検証済みイメージをArtifact Registryに送ってCloud Runに公開します。その後で
-Firebase Hostingのrewriteと公開後の検証を実API向けに変更します。
-
-Terraformの検証と請求先確定後の手順は [Google Cloudの初期構築](infra/gcp/README.md) を参照してください。
+請求先確定後のTerraform適用、承認付きCloud Runリリース、切り戻し手順は [Google Cloudの初期構築](infra/gcp/README.md) を参照してください。
 
 ## CI/CD
 

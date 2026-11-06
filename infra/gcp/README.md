@@ -45,17 +45,36 @@ terraform test
 
 Cloud Runは初回作成時にイメージが必要なので、Google Cloudのサンプルイメージを使って認証必須のサービスを作成します。リクエスト課金、最小0・最大2インスタンスで開始し、実行サービスアカウントにはプロジェクトロールを付与しません。インスタンス数の上限と請求額の上限は別です。
 
-GitHubのデプロイ用サービスアカウントには、対象のArtifact RegistryにWriter、対象のCloud RunサービスにDeveloper、実行用サービスアカウントにService Account Userを付与します。イメージだけを更新する運用はデプロイコマンドで守ります。Cloud Run Developerはサービスのイメージ以外の設定も更新できる権限です。
+GitHubのデプロイ用サービスアカウントには、対象のArtifact RegistryにWriter、対象のCloud RunサービスにDeveloper、実行用サービスアカウントにService Account Userを付与します。Cloud Run Developerはサービスの設定も更新できる権限です。WIFで認証できるワークフローを限定し、Terraformとリリースで管理範囲を分けます。
 
-## APIデプロイを接続する
+## Cloud Runリリースを有効にする
 
-- 将来のAPIデプロイジョブで `google-github-actions/auth` を使い、Terraformの `workload_identity_provider` と `deploy_service_account` を渡します。`id-token: write` はそのジョブに限定します。WIFが受け入れるのは、設定した所有者ID・リポジトリIDの `main` からの `push` と `workflow_dispatch` です。
-- PR #2の `linux/amd64` ビルドと `/api/health.json` のスモークテストを再利用します。検証した同じイメージを出力先のArtifact Registryへpushし、push後のダイジェストを指定して既存のCloud Runサービスを更新します。
+1. GitHubに `cloud-run` Environmentを作ります。デプロイできるブランチは `main` に限定し、リリース責任者の承認を必須にします。複数人で運用する場合は自己承認も禁止します。
+2. 同じEnvironmentに以下の変数を登録します。
+
+   | GitHub Environment変数 | 値 |
+   |---|---|
+   | `GCP_PROJECT_ID` | `terraform.tfvars` の `project_id` |
+   | `GCP_REGION` | `region` |
+   | `CLOUD_RUN_SERVICE` | `service_name` |
+   | `GCP_WIF_PROVIDER` | `terraform output -raw workload_identity_provider` |
+   | `GCP_DEPLOY_SERVICE_ACCOUNT` | `terraform output -raw deploy_service_account` |
+
+3. リポジトリ変数 `CLOUD_RUN_ENABLED=true` を設定します。最新の `main` で `Verify` が成功したら、GitHub Actionsの **Release Cloud Run** を `main` で手動実行します。WIFは、登録済みのリポジトリIDと所有者ID、`main`、このワークフロー、`cloud-run` Environmentの組み合わせに限定します。
+
+公開ワークフローはPR #2と同じ `linux/amd64` ビルドとAPIスモークテストを使います。検証したイメージをArtifact Registryにpushし、ダイジェストを指定して候補リビジョンを作ります。認証付きで候補を検証してから100%のトラフィックを切り替え、切り替え後も実APIを検証します。切り替え後に失敗した場合は直前のリビジョンへ戻します。
+
+Terraformはサービス設定、スケーリング、IAMを管理します。初回作成後のイメージとトラフィックはリリースワークフローが管理します。Terraformの適用とアプリのリリースは重ねず、初回公開後にTerraformのプランでイメージやトラフィックの巻き戻しがないことを確認します。
+
+## 障害対応と一般公開
+
+- 障害時はActionsのジョブログで直前のリビジョン名を確認し、必要に応じて下のコマンドで戻します。途中でジョブをキャンセルした場合はCloud Runのリビジョンと配分を確認します。初回の戻し先は認証必須のサンプルリビジョンです。
 
   ```sh
-  gcloud run services update "$SERVICE_NAME" --project "$PROJECT_ID" --region "$REGION" \
-    --image "$IMAGE_BY_DIGEST"
+  gcloud run services update-traffic "$SERVICE_NAME" --project "$PROJECT_ID" --region "$REGION" \
+    --to-revisions "$PREVIOUS_REVISION=100"
   ```
 
-- Terraformがサービス設定、スケーリング、トラフィック方針、IAMを管理します。Actionsはイメージだけを更新します。Terraformの `ignore_changes` はイメージとデプロイクライアントのメタデータに限定しています。Terraform適用とアプリ公開は重ねず、初回公開後にTerraformのプランで初期イメージへの差し戻しがないことを確認します。
-- Cloud Run側で実APIの動作を確認してから、Firebase Hostingを切り替えます。公開呼び出しを許可するか判断し、必要な権限をTerraform側で変更します。Hostingでは静的モックJSONの削除、Cloud Run rewriteの追加、公開後チェックを `source: api` に変更する作業をまとめて行います。既存の `Verify` → `Deploy Hosting` にCloud Runのデプロイ依存を追加するのは、この切り替え時に判断します。
+- 一般公開前に、責任者と通知先を決め、Cloud Monitoringでエラー率と応答時間、Cloud Billingで予算通知を設定します。初回は認証付きの実環境で公開・切り戻しを一往復し、運用者が通知と復旧手順を確認します。
+- 利用者が実際に行う操作を少なくとも1つ受け入れテストに追加し、認証・データの扱い・障害時の案内を実機で確認します。`/api/health.json` はAPI到達性の確認に使います。
+- Firebase Hostingを実APIに切り替える際は、実サービスへのアクセス方式を決めます。静的モックJSONの削除、Cloud Run rewriteの追加、公開後チェックの `source: api` への変更をまとめます。`pinTag` を使う場合は、公開対象のCloud Runリビジョンを検証してからHostingをリリースし、画面とAPIを揃えて切り戻せることも確認します。

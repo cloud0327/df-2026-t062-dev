@@ -22,7 +22,9 @@ run "private_service_with_scoped_deployer" {
       "assertion.repository_id == '1447301909'",
       "assertion.repository_owner_id == '234936919'",
       "assertion.ref == 'refs/heads/main'",
-      "assertion.event_name in ['push', 'workflow_dispatch']",
+      "assertion.event_name == 'workflow_dispatch'",
+      "assertion.workflow_ref == assertion.repository + '/.github/workflows/cloud-run.yml@refs/heads/main'",
+      "assertion.environment == 'cloud-run'",
     ])
     error_message = "WIF must restrict GitHub access to the configured repository, owner and main events."
   }
