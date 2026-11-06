@@ -1,0 +1,130 @@
+name: Release Cloud Run
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloud-run-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main' && vars.CLOUD_RUN_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      checks: read
+    outputs:
+      image_id: ${{ steps.api_image.outputs.id }}
+    steps:
+      - name: Require the existing Verify check on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs" \
+            --jq 'any(.check_runs[]; .name == "Verify" and .app.slug == "github-actions" and .conclusion == "success")' |
+            grep -Fx true
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build and verify release image
+        id: api_image
+        run: |
+          docker build --platform linux/amd64 --tag t062-api:release .
+          bash scripts/smoke-api-container.sh t062-api:release
+          printf 'id=%s\n' "$(docker image inspect --format '{{.Id}}' t062-api:release)" >> "$GITHUB_OUTPUT"
+          docker save --output api-image.tar t062-api:release
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: api-image-${{ github.sha }}
+          path: api-image.tar
+          if-no-files-found: error
+          retention-days: 3
+          overwrite: true
+
+  release:
+    needs: build
+    if: github.ref == 'refs/heads/main' && vars.CLOUD_RUN_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: cloud-run
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_REGION: ${{ vars.GCP_REGION }}
+      CLOUD_RUN_SERVICE: ${{ vars.CLOUD_RUN_SERVICE }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: api-image-${{ github.sha }}
+          path: image
+      - name: Verify release target
+        run: |
+          current_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)"
+          [[ "$current_sha" == "$GITHUB_SHA" ]]
+          [[ "$GCP_PROJECT_ID" =~ ^[a-z][a-z0-9-]{4,28}[a-z0-9]$ ]]
+          [[ "$GCP_REGION" =~ ^[a-z][a-z0-9-]+[0-9]$ ]]
+          [[ "$CLOUD_RUN_SERVICE" =~ ^[a-z]([a-z0-9-]{0,47}[a-z0-9])?$ ]]
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      - name: Push the verified image
+        id: image
+        env:
+          VERIFIED_IMAGE_ID: ${{ needs.build.outputs.image_id }}
+        run: |
+          set -euo pipefail
+          host="$GCP_REGION-docker.pkg.dev"
+          image="$host/$GCP_PROJECT_ID/$CLOUD_RUN_SERVICE/api"
+          tagged="$image:$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          gcloud auth configure-docker "$host" --quiet
+          docker load --input image/api-image.tar
+          [[ "$(docker image inspect --format '{{.Id}}' t062-api:release)" == "$VERIFIED_IMAGE_ID" ]]
+          docker tag t062-api:release "$tagged"
+          docker push "$tagged"
+          digest="$(gcloud artifacts docker images describe "$tagged" --format='value(image_summary.digest)')"
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          printf 'ref=%s@%s\n' "$image" "$digest" >> "$GITHUB_OUTPUT"
+      - name: Stage candidate without traffic
+        id: stage
+        env:
+          IMAGE_BY_DIGEST: ${{ steps.image.outputs.ref }}
+        run: bash scripts/release-cloud-run.sh stage
+      - name: Issue a private service identity token
+        id: probe
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+          token_format: id_token
+          id_token_audience: ${{ steps.stage.outputs.service_url }}
+          id_token_include_email: true
+          create_credentials_file: false
+          export_environment_variables: false
+      - name: Verify, promote and confirm
+        env:
+          CLOUD_RUN_ID_TOKEN: ${{ steps.probe.outputs.id_token }}
+          SERVICE_URL: ${{ steps.stage.outputs.service_url }}
+          CANDIDATE_URL: ${{ steps.stage.outputs.candidate_url }}
+          PREVIOUS_REVISION: ${{ steps.stage.outputs.previous }}
+          CANDIDATE_REVISION: ${{ steps.stage.outputs.revision }}
+        run: bash scripts/release-cloud-run.sh promote
+      - name: Remove temporary candidate tag
+        if: always() && steps.stage.outputs.tag != ''
+        env:
+          CANDIDATE_TAG: ${{ steps.stage.outputs.tag }}
+        run: bash scripts/release-cloud-run.sh cleanup

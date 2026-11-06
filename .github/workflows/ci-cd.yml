@@ -34,27 +34,10 @@ jobs:
           trap 'kill "$preview_pid" 2>/dev/null || true' EXIT
           node scripts/verify-hosting.mjs http://127.0.0.1:4173 "$GITHUB_SHA"
       - name: Build and smoke-test API container
+        if: github.event_name == 'pull_request'
         run: |
-          set -euo pipefail
           docker build --platform linux/amd64 --tag t062-api:ci .
-          container_id="$(docker run --detach --rm \
-            --publish 127.0.0.1:8787:8080 \
-            --env PORT=8080 \
-            t062-api:ci)"
-          trap 'docker stop "$container_id" >/dev/null 2>&1 || true' EXIT
-          for attempt in {1..30}; do
-            if curl --fail --silent http://127.0.0.1:8787/api/health.json > /tmp/t062-health.json; then
-              break
-            fi
-            sleep 1
-          done
-          node --input-type=module -e '
-            import assert from "node:assert/strict";
-            import { readFileSync } from "node:fs";
-            assert.deepEqual(JSON.parse(readFileSync("/tmp/t062-health.json", "utf8")), {
-              status: "ok", source: "api"
-            });
-          '
+          bash scripts/smoke-api-container.sh t062-api:ci
       - name: Upload Hosting build
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

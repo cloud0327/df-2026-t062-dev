@@ -1,0 +1,5 @@
+project_id                 = "your-billing-enabled-project"
+region                     = "asia-northeast1"
+service_name               = "t062-api"
+github_repository_id       = "1447301909"
+github_repository_owner_id = "234936919"
