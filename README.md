@@ -2,7 +2,7 @@
 
 CI/CDを確認するためのWebアプリです。ローカルではNode.js API、公開サイトでは模擬応答のJSONを使います。
 
-[デモサイトを開く](https://df-2026-t062-demo-327.web.app)
+[デモサイトを開く](https://gen-lang-client-0990270423.web.app)
 
 ## ローカル開発
 
@@ -43,14 +43,14 @@ Google Cloudへの認証・Artifact Registryへのpush・Cloud Runデプロイ�
 
 ## CI/CD
 
-PRと `main` で型チェック、APIテスト、ビルドを実行します。公開ジョブは検証済みの `dist/` を使い、公開先の画面・模擬応答・コミットSHAを確認します。接続後はGitHubの `hosting-live` Environmentに公開URLが表示されます。
+PRと `main` で型チェック、APIテスト、ビルドを実行します。公開ジョブは検証済みの `dist/` を使い、公開先の画面・模擬応答・コミットSHAを確認します。接続後はGitHubの `hosting-live-wif` Environmentに公開URLが表示されます。
 
 ### 初回接続
 
-1. Firebase Sparkプロジェクトを作り、デフォルトのHostingサイトを作成します。
-2. Firebaseプロジェクトにデプロイ専用サービスアカウントを作り、`roles/firebasehosting.admin` と `roles/serviceusage.apiKeysViewer` を付与します。
-3. GitHubの `hosting-live` Environmentを作り、デプロイできるブランチを `main` に限定します。同じEnvironmentに変数 `FIREBASE_PROJECT_ID` と `FIREBASE_HOSTING_URL`（末尾スラッシュなしの `https://<site-id>.web.app`）、Secret `FIREBASE_SERVICE_ACCOUNT`（JSON鍵）を登録します。鍵はGitHub Secretに直接渡し、作業用の鍵ファイルを削除します。
-4. `Verify` が初回に完了したら、`main` にPRと `Verify` の成功を要求する保護を設定します。リポジトリ変数 `HOSTING_ENABLED=true` を設定し、PRのマージまたは `main` の `CI/CD` の手動実行で初回公開を確認します。
+1. Firebaseプロジェクト `gen-lang-client-0990270423` のデフォルトHostingサイトを使います。
+2. Hosting専用サービスアカウントに `roles/firebasehosting.admin` と `roles/serviceusage.apiKeysViewer` を付与します。WIFの信頼条件は、開発用リポジトリと所有者の数値ID、`main`、`ci-cd.yml`、`hosting-live-wif` に限定します。
+3. GitHubの `hosting-live-wif` Environmentで `main` からのデプロイを許可し、`FIREBASE_PROJECT_ID`、`FIREBASE_HOSTING_URL`、`FIREBASE_WIF_PROVIDER`、`FIREBASE_DEPLOY_SERVICE_ACCOUNT` を登録します。Firebase CLIは短期認証をApplication Default Credentials経由で利用します。
+4. `Verify` が成功したら、`HOSTING_ENABLED=true` の状態でPRをマージするか、`main` で `CI/CD` を手動実行します。
 
 ### 切り戻し
 
