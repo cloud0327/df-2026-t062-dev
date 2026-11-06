@@ -43,6 +43,8 @@ Google Cloudへの認証・Artifact Registryへのpush・Cloud Runデプロイ�
 検証済みイメージをArtifact Registryに送ってCloud Runに公開します。その後で
 Firebase Hostingのrewriteと公開後の検証を実API向けに変更します。
 
+Terraformの検証と請求先確定後の手順は [Google Cloudの初期構築](infra/gcp/README.md) を参照してください。
+
 ## CI/CD
 
 PRと `main` で型チェック、APIテスト、ビルドを実行します。公開ジョブは検証済みの `dist/` を使い、公開先の画面・模擬応答・コミットSHAを確認します。接続後はGitHubの `hosting-live` Environmentに公開URLが表示されます。

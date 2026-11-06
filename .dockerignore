@@ -12,3 +12,6 @@ credentials*.json
 gha-creds-*.json
 .DS_Store
 *.log
+
+# Terraform configuration and local state
+infra/
