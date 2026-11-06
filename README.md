@@ -21,6 +21,28 @@ npm test
 npm run build
 ```
 
+## Docker API（Google Cloud接続前の検証）
+
+Google Cloudの請求先と認証設定が決まるまでは、Cloud Runへの公開を保留します。
+その間もAPIのコンテナ化とCIの動作確認は進められます。今のFirebase Hostingでは引き続き模擬応答を配信します。
+
+Dockerが利用できる環境では、次のコマンドでAPIコンテナを確認できます。
+
+```sh
+docker build -t t062-api:local .
+docker run --rm -e PORT=8080 -p 127.0.0.1:8787:8080 t062-api:local
+# 別ターミナルから
+curl http://127.0.0.1:8787/api/health.json
+# {"status":"ok","source":"api"}
+```
+
+PRでもGitHub Actionsの`Verify`がDockerイメージをビルドして同じAPI応答を検証します。
+Google Cloudへの認証・Artifact Registryへのpush・Cloud Runデプロイは実行しません。
+
+請求先が確定した後はWorkload Identity Federation（WIF）でGitHub Actionsを接続し、
+検証済みイメージをArtifact Registryに送ってCloud Runに公開します。その後で
+Firebase Hostingのrewriteと公開後の検証を実API向けに変更します。
+
 ## CI/CD
 
 PRと `main` で型チェック、APIテスト、ビルドを実行します。公開ジョブは検証済みの `dist/` を使い、公開先の画面・模擬応答・コミットSHAを確認します。接続後はGitHubの `hosting-live` Environmentに公開URLが表示されます。
