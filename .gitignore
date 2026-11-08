@@ -13,3 +13,6 @@ gha-creds-*.json
 .firebase/
 *.log
 .DS_Store
+
+# Local data (storage emulation)
+.data/
