@@ -1,0 +1,1025 @@
+{
+ "1_エレベーター_有": {
+  "key": "housing.elevator",
+  "path": [],
+  "kind": "bool",
+  "value": true
+ },
+ "1_エレベーター_無": {
+  "key": "housing.elevator",
+  "path": [],
+  "kind": "bool",
+  "value": false
+ },
+ "1_フリガナ": {
+  "key": "person.nameKana",
+  "path": [],
+  "kind": "text"
+ },
+ "1_住居の種類_戸建て": {
+  "key": "housing.buildingType",
+  "path": [],
+  "kind": "enum",
+  "value": "一戸建て"
+ },
+ "1_住居の種類_集合住宅": {
+  "key": "housing.buildingType",
+  "path": [],
+  "kind": "enum",
+  "value": "集合住宅"
+ },
+ "1_住所": {
+  "key": "person.address",
+  "path": [],
+  "kind": "text"
+ },
+ "1_住環境の特記事項": {
+  "key": "housing.notes",
+  "path": [],
+  "kind": "text"
+ },
+ "1_何階建て": {
+  "key": "housing.stories",
+  "path": [],
+  "kind": "number"
+ },
+ "1_区分変更": {
+  "key": "cert.status",
+  "path": [],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": "区分変更申請中"
+   }
+  ]
+ },
+ "1_区分変更_申請日_日": {
+  "key": "cert.applicationDate",
+  "path": [],
+  "kind": "date",
+  "part": "d"
+ },
+ "1_区分変更_申請日_月": {
+  "key": "cert.applicationDate",
+  "path": [],
+  "kind": "date",
+  "part": "m"
+ },
+ "1_居室の階": {
+  "key": "housing.roomFloor",
+  "path": [],
+  "kind": "number"
+ },
+ "1_年金_生活保護": {
+  "key": "welfare.publicAssistance",
+  "path": [],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": true
+   }
+  ]
+ },
+ "1_年齢": {
+  "key": "person.age",
+  "path": [],
+  "kind": "number"
+ },
+ "1_性別_女": {
+  "key": "person.sex",
+  "path": [],
+  "kind": "enum",
+  "value": "女"
+ },
+ "1_性別_男": {
+  "key": "person.sex",
+  "path": [],
+  "kind": "enum",
+  "value": "男"
+ },
+ "1_患者氏名": {
+  "key": "person.name",
+  "path": [],
+  "kind": "text"
+ },
+ "1_有効期間終了_年": {
+  "key": "cert.validTo",
+  "path": [],
+  "kind": "date",
+  "part": "y"
+ },
+ "1_有効期間終了_日": {
+  "key": "cert.validTo",
+  "path": [],
+  "kind": "date",
+  "part": "d"
+ },
+ "1_有効期間終了_月": {
+  "key": "cert.validTo",
+  "path": [],
+  "kind": "date",
+  "part": "m"
+ },
+ "1_有効期間開始_年": {
+  "key": "cert.validFrom",
+  "path": [],
+  "kind": "date",
+  "part": "y"
+ },
+ "1_有効期間開始_日": {
+  "key": "cert.validFrom",
+  "path": [],
+  "kind": "date",
+  "part": "d"
+ },
+ "1_有効期間開始_月": {
+  "key": "cert.validFrom",
+  "path": [],
+  "kind": "date",
+  "part": "m"
+ },
+ "1_未申請": {
+  "key": "cert.status",
+  "path": [],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": "未申請"
+   }
+  ]
+ },
+ "1_生年月日_大": {
+  "key": "person.birthDate",
+  "path": [],
+  "kind": "era",
+  "value": "T"
+ },
+ "1_生年月日_年": {
+  "key": "person.birthDate",
+  "path": [],
+  "kind": "date",
+  "part": "y"
+ },
+ "1_生年月日_日": {
+  "key": "person.birthDate",
+  "path": [],
+  "kind": "date",
+  "part": "d"
+ },
+ "1_生年月日_明": {
+  "key": "person.birthDate",
+  "path": [],
+  "kind": "era",
+  "value": "M"
+ },
+ "1_生年月日_昭": {
+  "key": "person.birthDate",
+  "path": [],
+  "kind": "era",
+  "value": "S"
+ },
+ "1_生年月日_月": {
+  "key": "person.birthDate",
+  "path": [],
+  "kind": "date",
+  "part": "m"
+ },
+ "1_申請中": {
+  "kind": "derived",
+  "keys": [
+   "cert.status"
+  ]
+ },
+ "1_申請中_申請日_日": {
+  "key": "cert.applicationDate",
+  "path": [],
+  "kind": "date",
+  "part": "d"
+ },
+ "1_申請中_申請日_月": {
+  "key": "cert.applicationDate",
+  "path": [],
+  "kind": "date",
+  "part": "m"
+ },
+ "1_自己負担割合": {
+  "kind": "derived",
+  "keys": [
+   "insurance.careCopayRate"
+  ]
+ },
+ "1_自己負担割合_不明": {
+  "kind": "derived",
+  "keys": [
+   "insurance.careCopayRate"
+  ]
+ },
+ "1_自己負担割合の数": {
+  "key": "insurance.careCopayRate",
+  "path": [],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "1",
+    "value": "1割"
+   },
+   {
+    "text": "2",
+    "value": "2割"
+   },
+   {
+    "text": "3",
+    "value": "3割"
+   }
+  ]
+ },
+ "1_自立度_ケアマネの判断": {
+  "kind": "derived",
+  "keys": [
+   "independence.physical",
+   "independence.dementia"
+  ]
+ },
+ "1_自立度_医師の判断": {
+  "kind": "derived",
+  "keys": [
+   "independence.physical",
+   "independence.dementia"
+  ]
+ },
+ "1_要介護": {
+  "kind": "derived",
+  "keys": [
+   "cert.careLevel"
+  ]
+ },
+ "1_要介護の数": {
+  "key": "cert.careLevel",
+  "path": [],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "1",
+    "value": "要介護1"
+   },
+   {
+    "text": "2",
+    "value": "要介護2"
+   },
+   {
+    "text": "3",
+    "value": "要介護3"
+   },
+   {
+    "text": "4",
+    "value": "要介護4"
+   },
+   {
+    "text": "5",
+    "value": "要介護5"
+   }
+  ]
+ },
+ "1_要支援": {
+  "kind": "derived",
+  "keys": [
+   "cert.careLevel"
+  ]
+ },
+ "1_要支援の数": {
+  "key": "cert.careLevel",
+  "path": [],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "1",
+    "value": "要支援1"
+   },
+   {
+    "text": "2",
+    "value": "要支援2"
+   }
+  ]
+ },
+ "1_認知症高齢者自立度_I": {
+  "key": "independence.dementia",
+  "path": [
+   "level"
+  ],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": "I"
+   }
+  ]
+ },
+ "1_認知症高齢者自立度_IIIa": {
+  "key": "independence.dementia",
+  "path": [
+   "level"
+  ],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": "IIIa"
+   }
+  ]
+ },
+ "1_認知症高齢者自立度_IIIb": {
+  "key": "independence.dementia",
+  "path": [
+   "level"
+  ],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": "IIIb"
+   }
+  ]
+ },
+ "1_認知症高齢者自立度_IIa": {
+  "key": "independence.dementia",
+  "path": [
+   "level"
+  ],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": "IIa"
+   }
+  ]
+ },
+ "1_認知症高齢者自立度_IIb": {
+  "key": "independence.dementia",
+  "path": [
+   "level"
+  ],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": "IIb"
+   }
+  ]
+ },
+ "1_認知症高齢者自立度_IV": {
+  "key": "independence.dementia",
+  "path": [
+   "level"
+  ],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": "IV"
+   }
+  ]
+ },
+ "1_認知症高齢者自立度_M": {
+  "key": "independence.dementia",
+  "path": [
+   "level"
+  ],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": "M"
+   }
+  ]
+ },
+ "1_認知症高齢者自立度_自立": {
+  "key": "independence.dementia",
+  "path": [
+   "level"
+  ],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": "自立"
+   }
+  ]
+ },
+ "1_郵便番号": {
+  "key": "person.postalCode",
+  "path": [],
+  "kind": "text"
+ },
+ "1_障害など認定_あり": {
+  "kind": "derived",
+  "keys": [
+   "disabilityCertificateSummary",
+   "handbook.physical",
+   "handbook.rehabilitation",
+   "handbook.mental"
+  ]
+ },
+ "1_障害など認定_なし": {
+  "kind": "derived",
+  "keys": [
+   "disabilityCertificateSummary",
+   "handbook.physical",
+   "handbook.rehabilitation",
+   "handbook.mental"
+  ]
+ },
+ "1_障害など認定_知的": {
+  "kind": "derived",
+  "keys": [
+   "disabilityCertificateSummary",
+   "handbook.rehabilitation"
+  ]
+ },
+ "1_障害など認定_精神": {
+  "kind": "derived",
+  "keys": [
+   "disabilityCertificateSummary",
+   "handbook.mental"
+  ]
+ },
+ "1_障害など認定_身体": {
+  "kind": "derived",
+  "keys": [
+   "disabilityCertificateSummary",
+   "handbook.physical"
+  ]
+ },
+ "1_障害高齢者自立度_A1": {
+  "key": "independence.physical",
+  "path": [
+   "level"
+  ],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": "A1"
+   }
+  ]
+ },
+ "1_障害高齢者自立度_A2": {
+  "key": "independence.physical",
+  "path": [
+   "level"
+  ],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": "A2"
+   }
+  ]
+ },
+ "1_障害高齢者自立度_B1": {
+  "key": "independence.physical",
+  "path": [
+   "level"
+  ],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": "B1"
+   }
+  ]
+ },
+ "1_障害高齢者自立度_B2": {
+  "key": "independence.physical",
+  "path": [
+   "level"
+  ],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": "B2"
+   }
+  ]
+ },
+ "1_障害高齢者自立度_C1": {
+  "key": "independence.physical",
+  "path": [
+   "level"
+  ],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": "C1"
+   }
+  ]
+ },
+ "1_障害高齢者自立度_C2": {
+  "key": "independence.physical",
+  "path": [
+   "level"
+  ],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": "C2"
+   }
+  ]
+ },
+ "1_障害高齢者自立度_J1": {
+  "key": "independence.physical",
+  "path": [
+   "level"
+  ],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": "J1"
+   }
+  ]
+ },
+ "1_障害高齢者自立度_J2": {
+  "key": "independence.physical",
+  "path": [
+   "level"
+  ],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": "J2"
+   }
+  ]
+ },
+ "1_障害高齢者自立度_自立": {
+  "key": "independence.physical",
+  "path": [
+   "level"
+  ],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": "自立"
+   }
+  ]
+ },
+ "1_電話番号": {
+  "key": "person.phone",
+  "path": [],
+  "kind": "text"
+ },
+ "2_世帯構成_その他": {
+  "key": "household.type",
+  "path": [],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": "その他"
+   }
+  ]
+ },
+ "2_世帯構成_その他の内容": {
+  "key": "household.typeOther",
+  "path": [],
+  "kind": "text"
+ },
+ "2_世帯構成_子と同居": {
+  "key": "household.type",
+  "path": [],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": "子と同居"
+   }
+  ]
+ },
+ "2_世帯構成_独居": {
+  "key": "household.type",
+  "path": [],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": "独居"
+   }
+  ]
+ },
+ "2_世帯構成_高齢者世帯": {
+  "key": "household.type",
+  "path": [],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": "高齢者世帯"
+   }
+  ]
+ },
+ "2_日中独居": {
+  "key": "household.daytimeAlone",
+  "path": [],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": true
+   }
+  ]
+ },
+ "3_家族の意向": {
+  "key": "intention.family",
+  "path": [],
+  "kind": "text"
+ },
+ "3_本人の意向": {
+  "key": "intention.person",
+  "path": [],
+  "kind": "text"
+ },
+ "3_生活歴": {
+  "key": "person.lifeHistory",
+  "path": [],
+  "kind": "text"
+ },
+ "3_趣味・関心": {
+  "key": "person.interests",
+  "path": [],
+  "kind": "text"
+ },
+ "4_その他の同封書類": {
+  "key": "admission.enclosedOther",
+  "path": [],
+  "kind": "text"
+ },
+ "4_その他を同封": {
+  "kind": "derived",
+  "keys": [
+   "admission.enclosedOther"
+  ]
+ },
+ "4_計画書1・2・3表を同封": {
+  "key": "admission.enclosedCarePlan",
+  "path": [],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": true
+   }
+  ]
+ },
+ "5_世帯への配慮_不要": {
+  "key": "outlook.householdConsideration",
+  "path": [
+   "needed"
+  ],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": false
+   }
+  ]
+ },
+ "5_世帯への配慮_必要": {
+  "key": "outlook.householdConsideration",
+  "path": [
+   "needed"
+  ],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": true
+   }
+  ]
+ },
+ "5_介護力_一部": {
+  "key": "outlook.careCapacity",
+  "path": [],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": "介護力が見込める（一部）"
+   }
+  ]
+ },
+ "5_介護力_十分": {
+  "key": "outlook.careCapacity",
+  "path": [],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": "介護力が見込める（十分）"
+   }
+  ]
+ },
+ "5_介護力_家族や支援者はいない": {
+  "key": "outlook.careCapacity",
+  "path": [],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": "家族や支援者はいない"
+   }
+  ]
+ },
+ "5_介護力_見込めない": {
+  "key": "outlook.careCapacity",
+  "path": [],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": "介護力は見込めない"
+   }
+  ]
+ },
+ "5_介護力_見込める": {
+  "kind": "derived",
+  "keys": [
+   "outlook.careCapacity"
+  ]
+ },
+ "5_在宅生活に必要な要件": {
+  "key": "outlook.requirements",
+  "path": [],
+  "kind": "text"
+ },
+ "5_特記事項": {
+  "key": "outlook.notes",
+  "path": [],
+  "kind": "text"
+ },
+ "5_虐待の疑い_あり": {
+  "key": "outlook.abuseSuspicion",
+  "path": [
+   "has"
+  ],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": true
+   }
+  ]
+ },
+ "5_虐待の疑い_なし": {
+  "key": "outlook.abuseSuspicion",
+  "path": [
+   "has"
+  ],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": false
+   }
+  ]
+ },
+ "5_退院後の世帯_その他": {
+  "key": "outlook.household",
+  "path": [
+   "type"
+  ],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": "その他"
+   }
+  ]
+ },
+ "5_退院後の世帯_子と同居": {
+  "key": "outlook.household",
+  "path": [
+   "type"
+  ],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": "子と同居"
+   }
+  ]
+ },
+ "5_退院後の世帯_日中独居": {
+  "key": "outlook.household",
+  "path": [
+   "daytimeAlone"
+  ],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": true
+   }
+  ]
+ },
+ "5_退院後の世帯_独居": {
+  "key": "outlook.household",
+  "path": [
+   "type"
+  ],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": "独居"
+   }
+  ]
+ },
+ "5_退院後の世帯_高齢世帯": {
+  "key": "outlook.household",
+  "path": [
+   "type"
+  ],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": "高齢者世帯"
+   }
+  ]
+ },
+ "5_退院後の主介護者_同じ": {
+  "key": "outlook.caregiver",
+  "path": [
+   "sameAsNow"
+  ],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": true
+   }
+  ]
+ },
+ "5_退院後の主介護者_左記以外": {
+  "key": "outlook.caregiver",
+  "path": [
+   "sameAsNow"
+  ],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": false
+   }
+  ]
+ },
+ "5_退院後の主介護者_年齢": {
+  "key": "outlook.caregiver",
+  "path": [
+   "age"
+  ],
+  "kind": "number"
+ },
+ "5_退院後の主介護者_氏名": {
+  "key": "outlook.caregiver",
+  "path": [
+   "name"
+  ],
+  "kind": "text"
+ },
+ "5_退院後の主介護者_続柄": {
+  "key": "outlook.caregiver",
+  "path": [
+   "relationship"
+  ],
+  "kind": "text"
+ },
+ "6_退院前カンファレンス_具体的な要望": {
+  "key": "conference.preDischargeRequest",
+  "path": [],
+  "kind": "text"
+ },
+ "6_退院前カンファレンス_希望あり": {
+  "key": "conference.preDischarge",
+  "path": [],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": true
+   }
+  ]
+ },
+ "6_退院前訪問指導の同行_希望あり": {
+  "key": "conference.homeVisitAccompany",
+  "path": [],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": true
+   }
+  ]
+ },
+ "6_院内カンファレンス_希望あり": {
+  "key": "conference.inHospital",
+  "path": [],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": true
+   }
+  ]
+ },
+ "ケアマネジャー氏名": {
+  "key": "office.careManagerName",
+  "path": [],
+  "kind": "text"
+ },
+ "事業所FAX": {
+  "key": "office.fax",
+  "path": [],
+  "kind": "text"
+ },
+ "事業所TEL": {
+  "key": "office.phone",
+  "path": [],
+  "kind": "text"
+ },
+ "事業所名": {
+  "key": "office.name",
+  "path": [],
+  "kind": "text"
+ },
+ "入院日_年": {
+  "key": "admission.date",
+  "path": [],
+  "kind": "date",
+  "part": "y"
+ },
+ "入院日_日": {
+  "key": "admission.date",
+  "path": [],
+  "kind": "date",
+  "part": "d"
+ },
+ "入院日_月": {
+  "key": "admission.date",
+  "path": [],
+  "kind": "date",
+  "part": "m"
+ },
+ "医療機関の担当者名": {
+  "key": "admission.hospitalStaff",
+  "path": [],
+  "kind": "text"
+ },
+ "医療機関名": {
+  "key": "admission.hospitalName",
+  "path": [],
+  "kind": "text"
+ },
+ "情報提供日_年": {
+  "key": "admission.infoProvidedDate",
+  "path": [],
+  "kind": "date",
+  "part": "y"
+ },
+ "情報提供日_日": {
+  "key": "admission.infoProvidedDate",
+  "path": [],
+  "kind": "date",
+  "part": "d"
+ },
+ "情報提供日_月": {
+  "key": "admission.infoProvidedDate",
+  "path": [],
+  "kind": "date",
+  "part": "m"
+ },
+ "記入日_年": {
+  "key": "admission.recordDate",
+  "path": [],
+  "kind": "date",
+  "part": "y"
+ },
+ "記入日_日": {
+  "key": "admission.recordDate",
+  "path": [],
+  "kind": "date",
+  "part": "d"
+ },
+ "記入日_月": {
+  "key": "admission.recordDate",
+  "path": [],
+  "kind": "date",
+  "part": "m"
+ }
+}
