@@ -1,18 +1,20 @@
 import { getDocument, GlobalWorkerOptions, type PDFPageProxy } from 'pdfjs-dist'
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-import { SURVEY_IMPORT_KEYS, type SurveyImportKey } from '../../core/survey-import.ts'
-import { readRowMarks } from './marks.ts'
+import { choicesOf, spec } from '../../core/fields.ts'
+import { SURVEY_IMPORT_KEYS, surveyChoice, surveyPage, type SurveyImportKey, type SurveySelection } from '../../core/survey-import.ts'
+import { readBoxMarks } from './marks.ts'
+import { HIROSHIMA_BOXES } from './hiroshima.ts'
 
 GlobalWorkerOptions.workerSrc = pdfWorker
 
 const MAX_BYTES = 10 * 1024 * 1024
 const SCALE = 3
-const labels = ['2.移動', '4.食事摂取', '5.排尿']
 const compact = (text: string) => text.normalize('NFKC').replace(/\s/g, '')
 
 interface Candidate {
   key: SurveyImportKey
-  choice: number | null
+  choice: SurveySelection | null
+  page: 1 | 2
   reason: string | null
   preview: string
   note?: string
@@ -35,8 +37,8 @@ async function textOn(page: PDFPageProxy) {
 
 async function render(page: PDFPageProxy) {
   const viewport = page.getViewport({ scale: SCALE })
-  if (page.rotate !== 0 || viewport.width > 1900 || viewport.height > 2700 ||
-      Math.abs(viewport.width / viewport.height - 0.707) > 0.01) {
+  if (page.rotate !== 0 || Math.abs(viewport.width / SCALE - 595.32) > 0.75 ||
+      Math.abs(viewport.height / SCALE - 841.92) > 0.75) {
     throw new Error('広島市版のA4縦のPDFを選んでください。')
   }
   const canvas = document.createElement('canvas')
@@ -70,29 +72,37 @@ export async function readSurvey(file: File): Promise<SurveyPreview> {
         !secondText.some((item) => compact(item.text) === '2生活機能')) {
       throw new Error('広島市版のテキスト付きPDFに対応しています。スキャン画像や別の様式は確認できません。')
     }
-    const firstPage = await render(first)
-    const identity = crop(firstPage, 0, 0, firstPage.width, firstPage.height * 0.31)
-    const canvas = await render(second)
-    const context = canvas.getContext('2d')!
-    const image = context.getImageData(0, 0, canvas.width, canvas.height)
+    const canvases = await Promise.all([render(first), render(second)])
+    const identity = crop(canvases[0], 0, 0, canvases[0].width, canvases[0].height * 0.31)
+    const images = canvases.map((canvas) => canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height))
 
     const notes = pdf.numPages >= 3 ? await textOn(await pdf.getPage(3)) : []
-    const candidates = SURVEY_IMPORT_KEYS.map((key, i): Candidate => {
-      const anchors = secondText.filter((t) => t.x > 12 && t.x < 65 && t.top > 60 && t.top < 220 && compact(t.text) === labels[i])
-      if (anchors.length !== 1) throw new Error('生活機能の欄を確認できませんでした。')
-      const y = anchors[0].top * SCALE
-      const marks = readRowMarks(image, y, SCALE)
-      const marked = marks.flatMap((m, index) => m !== 'empty' ? [index + 1] : [])
-      const choice = marked.length === 1 && marks[marked[0] - 1] === 'clear' ? marked[0] : null
-      const reason = choice !== null ? null : marked.length > 1 ? '複数の印があります'
-        : marked.length === 1 ? '印が薄く、選択肢を確定できません' : '印を確認できません'
+    const candidates = SURVEY_IMPORT_KEYS.map((key): Candidate => {
+      const field = spec(key)
+      const boxes = HIROSHIMA_BOXES[key]
+      if (!field || choicesOf(field).length !== boxes.length) throw new Error(`選択肢の定義が一致しません: ${key}`)
+      const page = surveyPage(key)
+      const [width, height] = page === 1 ? [13.8, 16.3] : [11, 13.5]
+      const marks = readBoxMarks(images[page - 1], boxes, SCALE, width, height)
+      const marked = marks.flatMap((mark, index) => mark !== 'empty' ? [index + 1] : [])
+      const selection = field.type === 'multi' ? marked : marked[0]
+      const valid = surveyChoice(key, selection) !== undefined && (field.type === 'multi' || marked.length === 1)
+      const faint = marks.includes('faint')
+      const choice = valid && !faint ? selection : null
+      const reason = choice !== null ? null : !marked.length ? '印を確認できません'
+        : faint ? '印が薄く、選択肢を確定できません'
+          : field.type === 'multi' ? '「ない」と他の選択肢の両方に印があります' : '複数の印があります'
+      const top = Math.min(...boxes.map(([, y]) => y))
+      const bottom = Math.max(...boxes.map(([, y]) => y)) + height
+      const left = boxes[0][0] < 300 ? 21 : 310
+      const row = crop(canvases[page - 1], left * SCALE, (top - 2) * SCALE, (left === 21 ? 282 : 264) * SCALE, (bottom - top + 6) * SCALE)
       const item = key.slice('survey.'.length).replace('_', '-')
       const noteAnchor = notes.filter((t) => compact(t.text) === item)
       // Show a literal line only when the item and its same-line text are identifiable.
       const note = noteAnchor.length === 1 ? notes.filter((t) =>
         t.x > noteAnchor[0].x + 25 && t.x < 450 && Math.abs(t.top - noteAnchor[0].top) < 1,
       ).map((t) => t.text).join('').trim() : ''
-      return { key, choice, reason, note: note || undefined, preview: crop(canvas, 0, y - 13 * SCALE, canvas.width / 2.1, 17 * SCALE) }
+      return { key, choice, reason, page, note: note || undefined, preview: row }
     })
     return { fileName: file.name, sha256, identity, candidates }
   } finally {

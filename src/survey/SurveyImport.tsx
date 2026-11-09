@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { sameValue } from '../../core/apply-batch.ts'
-import { spec } from '../../core/fields.ts'
-import { SURVEY_IMPORT_KEYS, surveyChoice, type SurveyImportKey } from '../../core/survey-import.ts'
+import { choicesOf, spec } from '../../core/fields.ts'
+import { SURVEY_IMPORT_KEYS, surveyChoice, type SurveyImportKey, type SurveySelection } from '../../core/survey-import.ts'
 import { api, ApiError, type DocumentView } from '../lib/api.ts'
 import type { SurveyPreview } from './readSurvey.ts'
 
@@ -14,6 +14,7 @@ export interface SurveyImportProps {
 
 export function SurveyImport({ document, clientName, beforeApply, onApplied }: SurveyImportProps) {
   const [preview, setPreview] = useState<SurveyPreview | null>(null)
+  const [corrections, setCorrections] = useState(new Map<SurveyImportKey, SurveySelection | null>())
   const [selected, setSelected] = useState<Set<SurveyImportKey>>(new Set())
   const [reviewDoc, setReviewDoc] = useState<DocumentView>(document)
   const [stale, setStale] = useState(false)
@@ -25,6 +26,7 @@ export function SurveyImport({ document, clientName, beforeApply, onApplied }: S
 
   const choose = async (file: File) => {
     setPreview(null)
+    setCorrections(new Map())
     setSelected(new Set())
     setConfirmed(false)
     setRecordedOn('')
@@ -47,9 +49,11 @@ export function SurveyImport({ document, clientName, beforeApply, onApplied }: S
 
   const apply = async () => {
     if (!preview || stale || busy || !confirmed || !selected.size) return
-    const changes = preview.candidates.flatMap(({ key, choice }) =>
-      choice !== null && selected.has(key) ? [{ key, choice, base: reviewDoc.fields[key]?.value ?? null }] : [],
-    )
+    const changes = preview.candidates.flatMap(({ key, choice }) => {
+      const corrected = corrections.get(key)
+      const selection = corrected === undefined ? choice : corrected
+      return selection !== null && selected.has(key) ? [{ key, choice: selection, base: reviewDoc.fields[key]?.value ?? null }] : []
+    })
     setBusy('applying')
     setError('')
     setMessage('')
@@ -60,7 +64,7 @@ export function SurveyImport({ document, clientName, beforeApply, onApplied }: S
       })
       setReviewDoc(updated)
       setSelected(new Set())
-      setMessage(`${changes.length}項目をp.6に反映しました。内容を確認して保存してください。`)
+      setMessage(`${changes.length}項目をアセスメントに反映しました。内容を確認して保存してください。`)
       onApplied()
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
@@ -93,13 +97,23 @@ export function SurveyImport({ document, clientName, beforeApply, onApplied }: S
     }
   }
 
+  const correct = (key: SurveyImportKey, choice: SurveySelection | null) => {
+    setCorrections((previous) => new Map(previous).set(key, choice))
+    // 候補を修正したら、変更後の値を選び直してもらう。
+    setSelected((previous) => {
+      const next = new Set(previous)
+      next.delete(key)
+      return next
+    })
+  }
+
   return (
     <section aria-label="認定調査票の取り込み" className="survey-import">
       <label>認定調査票のPDFを選ぶ
         <input type="file" accept="application/pdf,.pdf" disabled={busy !== null}
           onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ''; if (file) void choose(file) }} />
       </label>
-      <p>広島市版のテキスト付きPDF（10 MBまで）。移動・食事摂取・排尿の3項目を読み取ります。</p>
+      <p>広島市版のテキスト付きPDF（10 MBまで）。基本調査の第1〜5群、55項目を読み取ります。</p>
       {busy === 'reading' && <p role="status">読み取り中です…</p>}
       {error && <p role="alert" className="survey-import-error">{error}</p>}
       {message && <p role="status">{message}</p>}
@@ -118,21 +132,59 @@ export function SurveyImport({ document, clientName, beforeApply, onApplied }: S
             <input type="checkbox" checked={confirmed} disabled={busy !== null} onChange={(e) => setConfirmed(e.target.checked)} />
             原本が{clientName}さんのものだと確認した
           </label>
-          {preview.candidates.map(({ key, choice, reason, preview: row, note }) => {
-            const value = choice === null ? undefined : surveyChoice(key, choice)
-            const current = reviewDoc.fields[key]?.value ?? null
+          {preview.candidates.map(({ key, choice, reason, page, preview: row, note }) => {
+            const field = spec(key)!
+            const corrected = corrections.get(key)
+            const selection = corrected === undefined ? choice : corrected
+            const value = selection === null ? undefined : surveyChoice(key, selection)
+            const readValue = choice === null ? undefined : surveyChoice(key, choice)
+            const currentField = reviewDoc.fields[key]
+            const current = currentField?.value ?? null
+            const source = currentField?.surveySource
             const same = value !== undefined && sameValue(current, value)
+            const options = choicesOf(field)
             return (
               <fieldset key={key} disabled={stale || busy !== null}>
-                <legend>{spec(key)?.label ?? key}</legend>
+                <legend>{field.label}</legend>
                 <div>用紙の現在値：{current == null ? '空欄' : String(current)}</div>
-                <div>{reason ? `要確認：${reason}` : `読み取り候補：${value}`}</div>
+                {source && <small>{source.fileName} p.{source.page}、調査日 {source.recordedOn ?? '不明'}</small>}
+                <div className={reason ? 'survey-import-error' : undefined}>{reason ? `要確認：${reason}` : `読み取り候補：${readValue}`}</div>
+                {readValue !== undefined && current != null && !sameValue(current, readValue) &&
+                  <div className="survey-import-error">要確認：読み取り候補と用紙の値が異なります</div>}
                 <details>
-                  <summary>原本p.2の印を見る</summary>
-                  <img src={row} alt={`${spec(key)?.label ?? key}の原本の選択欄`} />
+                  <summary>原本p.{page}の印を見る</summary>
+                  <img src={row} alt={`${field.label}の原本の選択欄`} />
                 </details>
                 {note && <p>特記事項 p.3：{note}</p>}
-                {reason ? <small>原本を確認し、必要なら用紙で入力してください。</small> : same ? <small>用紙と同じ値です。</small> : (
+                {corrected !== undefined && <div>反映候補：{value ?? '未選択'}</div>}
+                <details>
+                  <summary>原本を確認して候補を選び直す</summary>
+                  {field.type === 'multi' ? options.map((option, index) => {
+                    const number = index + 1
+                    const chosen = Array.isArray(selection) ? selection : []
+                    return (
+                      <label className="survey-check" key={option}>
+                        <input type="checkbox" checked={chosen.includes(number)} onChange={(e) => {
+                          const next = e.target.checked
+                            ? number === 1 ? [1] : [...chosen.filter((n) => n !== 1), number].sort((a, b) => a - b)
+                            : chosen.filter((n) => n !== number)
+                          correct(key, next.length ? next : null)
+                        }} />
+                        {option}
+                      </label>
+                    )
+                  }) : (
+                    <label>反映候補
+                      <select value={typeof selection === 'number' ? selection : ''} onChange={(e) => {
+                        correct(key, e.target.value ? Number(e.target.value) : null)
+                      }}>
+                        <option value="">選択してください</option>
+                        {options.map((option, index) => <option key={option} value={index + 1}>{option}</option>)}
+                      </select>
+                    </label>
+                  )}
+                </details>
+                {value === undefined ? <small>原本を確認して反映候補を選んでください。</small> : same ? <small>用紙と同じ値です。</small> : (
                   <label className="survey-check">
                     <input type="checkbox" checked={selected.has(key)} onChange={(e) => {
                       const next = new Set(selected)
@@ -157,7 +209,7 @@ export function SurveyImport({ document, clientName, beforeApply, onApplied }: S
           <ul>
             {SURVEY_IMPORT_KEYS.map((key) => {
               const source = document.fields[key]?.surveySource
-              return source && <li key={key}>{spec(key)?.label}：{source.fileName} p.{source.page}、選択肢{source.choice}、調査日 {source.recordedOn ?? '不明'}</li>
+              return source && <li key={key}>{spec(key)?.label}：{source.fileName} p.{source.page}、選択肢{Array.isArray(source.choice) ? source.choice.join('、') : source.choice}、調査日 {source.recordedOn ?? '不明'}</li>
             })}
           </ul>
         </details>

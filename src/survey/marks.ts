@@ -1,49 +1,41 @@
-interface Box { x: number, y: number, w: number, h: number }
+export type Checkbox = readonly [x: number, top: number]
+export type Mark = 'empty' | 'faint' | 'clear'
 
-export function readRowMarks(image: ImageData, baseline: number, scale: number) {
+/** 既知の様式の枠を照合してから、枠の内側だけの濃さを測る。 */
+export function readBoxMarks(image: ImageData, boxes: readonly Checkbox[], scale: number, width: number, height: number): Mark[] {
   const gray = (x: number, y: number) => {
     const i = 4 * (y * image.width + x)
     return (image.data[i] + image.data[i + 1] + image.data[i + 2]) / 3
   }
-  const dark = (x: number, y: number) => gray(x, y) < 100
-  const xStart = Math.floor(image.width * 0.14)
-  const xEnd = Math.floor(image.width * 0.46)
-  const boxes: Box[] = []
-
-  // Find the four printed squares in the row rather than assuming the PDF's coordinates.
-  for (let y = Math.round(baseline - 13 * scale); y <= baseline - 7 * scale; y++) {
-    for (let x = xStart; x < xEnd;) {
-      if (!dark(x, y)) { x++; continue }
-      const left = x
-      while (x < xEnd && dark(x, y)) x++
-      const w = x - left
-      if (w < 10 * scale || w > 14 * scale || boxes.some((b) => Math.abs(b.x - left) < 3 * scale)) continue
-      for (let h = Math.round(12 * scale); h <= 16 * scale; h++) {
-        const right = x - 1
-        if (dark(left + Math.round(w / 2), y + h) &&
-            [0.25, 0.5, 0.75].every((at) => {
-              const mid = y + Math.round(at * h)
-              return dark(left, mid) && dark(right, mid)
-            })) {
-          boxes.push({ x: left, y, w, h })
-          break
-        }
-      }
+  const hasLine = (x: number, y: number, horizontal: boolean) => {
+    const distance = Math.ceil(1.3 * scale)
+    for (let delta = -distance; delta <= distance; delta++) {
+      if (gray(x + (horizontal ? 0 : delta), y + (horizontal ? delta : 0)) < 155) return true
     }
+    return false
   }
+  return boxes.map(([x, top]) => {
+    const left = Math.round(x * scale)
+    const right = Math.round((x + width) * scale)
+    const y0 = Math.round(top * scale)
+    const y1 = Math.round((top + height) * scale)
+    if (![0.25, 0.5, 0.75].every((part) => {
+      const col = Math.round(left + (right - left) * part)
+      const row = Math.round(y0 + (y1 - y0) * part)
+      return hasLine(col, y0, true) && hasLine(col, y1, true) &&
+        hasLine(left, row, false) && hasLine(right, row, false)
+    })) throw new Error('選択欄の位置を確認できません。対応する広島市版のPDFを選んでください。')
 
-  if (boxes.length !== 4) throw new Error('選択欄の位置を確認できません。対応する様式のPDFを選んでください。')
-  return boxes.sort((a, b) => a.x - b.x).map((b) => {
-    const pad = Math.ceil(scale * 1.6)
+    const pad = Math.ceil(1.7 * scale)
     let total = 0
     let ink = 0
     let strong = 0
-    for (let y = b.y + pad; y < b.y + b.h - pad; y++) {
-      for (let x = b.x + pad; x < b.x + b.w - pad; x++) {
-        const v = gray(x, y)
+    for (let y = y0 + pad; y < y1 - pad; y++) {
+      for (let px = left + pad; px < right - pad; px++) {
+        const value = gray(px, y)
         total++
-        if (v < 232) ink++
-        if (v < 140) strong++
+        if (value < 232) ink++
+        if (value < 140) strong++
       }
     }
     if (strong / total > 0.055) return 'clear'

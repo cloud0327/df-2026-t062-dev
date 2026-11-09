@@ -2,6 +2,7 @@
 // ファイルごとに別のスキーマを使うので、ほかのテストとぶつからない。
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
+import { readFileSync } from 'node:fs'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -353,25 +354,50 @@ test('認定調査票は確認した欄だけに出典を記録し、409では�
   assert.equal(made.status, 201)
   const path = '/api/documents/' + made.body.assessmentId
   const source = { fileName: 'survey-clean.pdf', sha256: 'a'.repeat(64), recordedOn: '2026-11-04' }
-  const post = (changes: { key: string, choice: number, base: unknown }[], token?: string) => call(path + '/survey-import', {
+  const post = (changes: { key: string, choice: number | number[], base: unknown }[], token?: string) => call(path + '/survey-import', {
     method: 'POST', token, body: JSON.stringify({ ...source, changes }),
   })
-
+  const [, ...rows] = readFileSync(new URL('../eval/document-import/survey/gold.tsv', import.meta.url), 'utf8').trimEnd().split('\n')
+  const gold = rows.map((row) => {
+    const [item, , page, selected, , key, expected] = row.split('\t')
+    const choices = selected.split(',').map(Number)
+    const choice = item === '1-1' || item === '1-2' ? choices : choices[0]
+    return { key, choice, page: Number(page), value: JSON.parse(expected) }
+  })
+  // 用紙の印字と同じ選択肢の数で受け取り、番号をそのまま値に変換する
+  assert.equal((await post([{ key: 'survey.2_3', choice: 4, base: null }])).status, 400)
+  assert.equal((await post([{ key: 'survey.1_1', choice: [1, 2], base: null }])).status, 400)
+  assert.equal((await post([{ key: 'survey.2_13', choice: 1, base: null }])).status, 400)
   assert.equal((await post([{ key: 'survey.2_2', choice: 2, base: null }], OTHER)).status, 404)
-  assert.equal((await post([{ key: 'survey.2_1', choice: 2, base: null }])).status, 400)
-  const applied = await post([{ key: 'survey.2_2', choice: 2, base: null }])
-  assert.equal(applied.status, 200)
-  const fields = applied.body.document.fields
-  assert.equal(fields['survey.2_2'].value, '見守り等')
-  assert.equal(fields['survey.2_2'].by, 'cm')
-  assert.deepEqual(fields['survey.2_2'].surveySource, { kind: 'survey-import', ...source, page: 2, choice: 2 })
-  assert.equal(fields['survey.2_4'], undefined)
 
+  const partial = await post([{ key: 'survey.2_2', choice: 2, base: null }])
+  assert.equal(partial.status, 200)
+  assert.equal(partial.body.document.fields['survey.2_2'].value, '見守り等')
+  assert.equal(partial.body.document.fields['survey.2_4'], undefined)
+  // 最初の欄は更新可能でも、後続の欄が競合すれば一部も書かない。
   assert.equal((await post([
     { key: 'survey.2_4', choice: 2, base: null },
     { key: 'survey.2_2', choice: 3, base: null },
   ])).status, 409)
   assert.equal((await call(path)).body.document.fields['survey.2_4'], undefined)
+
+  const applied = await post(gold.map(({ key, choice }) => ({
+    key, choice, base: key === 'survey.2_2' ? '見守り等' : null,
+  })))
+  assert.equal(applied.status, 200)
+  const fields = applied.body.document.fields
+  for (const { key, choice, page, value } of gold) {
+    assert.deepEqual(fields[key].value, value, key)
+    assert.equal(fields[key].by, 'cm', key)
+    assert.deepEqual(fields[key].surveySource, { kind: 'survey-import', ...source, page, choice }, key)
+  }
+  assert.equal(fields['survey.2_13'], undefined)
+
+  // 反映済みの欄に元の base（空欄）で出すと、全部が保留になる
+  assert.equal((await post(gold.map(({ key, choice }) => ({ key, choice, base: null })))).status, 409)
+  const kept = (await call(path)).body.document.fields
+  assert.equal(kept['survey.2_3'].value, 'できる')
+  assert.equal(kept['survey.2_11'].surveySource.choice, 3)
 
   const edited = await call(path + '/fields', {
     method: 'PATCH', body: JSON.stringify({ changes: [{ key: 'survey.2_2', value: '一部介助', base: '見守り等' }] }),
