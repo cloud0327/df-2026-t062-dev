@@ -42,6 +42,15 @@ override_resource {
   }
 }
 
+override_resource {
+  target          = google_service_account.github_deploy
+  override_during = plan
+  values = {
+    email = "github-api-deploy@mock-project.iam.gserviceaccount.com"
+    name  = "projects/mock-project/serviceAccounts/github-api-deploy@mock-project.iam.gserviceaccount.com"
+  }
+}
+
 run "private_service_with_scoped_deployer" {
   command = plan
 
@@ -97,7 +106,15 @@ run "private_service_with_scoped_deployer" {
       google_cloud_run_v2_service_iam_member.tasks_invoker_calls_worker.role == "roles/run.invoker" &&
       google_cloud_run_v2_service_iam_member.tasks_invoker_calls_worker.member == "serviceAccount:tasks-invoker@mock-project.iam.gserviceaccount.com"
     )
-    error_message = "Only tasks-invoker may invoke the worker."
+    error_message = "The Cloud Tasks and Scheduler identity may invoke the worker."
+  }
+
+  assert {
+    condition = (
+      google_cloud_run_v2_service_iam_member.deployer_invokes_worker.role == "roles/run.invoker" &&
+      google_cloud_run_v2_service_iam_member.deployer_invokes_worker.member == "serviceAccount:github-api-deploy@mock-project.iam.gserviceaccount.com"
+    )
+    error_message = "The GitHub deployer must invoke the private worker to verify its health after deployment."
   }
 
   assert {

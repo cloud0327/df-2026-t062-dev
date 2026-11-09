@@ -64,7 +64,7 @@ gh() { printf '%s\n' "$GITHUB_SHA"; }
 sleep() { :; }
 curl() {
   case "${!#}" in
-    "$WORKER_URL/healthz")
+    "$WORKER_URL/health")
       [[ "$SCENARIO" != worker_fails ]] || return 22
       printf '%s\n' '{"status":"ok","source":"worker"}'
       return
@@ -94,7 +94,7 @@ grep -F "jobs execute run jobs execute t062-migrate" "$CALL_LOG" | grep -F -- "-
 [[ "$(cat "$WORKER_STATE")" == "$WORKER_PREVIOUS_REVISION" ]]
 [[ "$(cat "$RELEASE_STATE")" == "$PREVIOUS_REVISION" ]]
 
-# worker: 同じイメージを node worker/index.ts で動かし、/healthz が通らなければ前のリビジョンに戻す
+# worker: 同じイメージを node worker/index.ts で動かし、/health が通らなければ前のリビジョンに戻す
 : > "$CALL_LOG"
 bash scripts/release-cloud-run.sh worker-deploy
 grep -Fx "worker_url=$WORKER_URL" "$GITHUB_OUTPUT"
