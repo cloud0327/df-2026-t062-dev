@@ -215,3 +215,6 @@ strong.assistant-chat-field { color: var(--pet-ink); }
 .assistant-chat-form { position: sticky; bottom: -22px; display: grid; gap: 8px; margin-top: auto; padding: 10px 0 4px; background: linear-gradient(180deg, transparent, #f5f2fd 14px); }
 .assistant-chat-form textarea { width: 100%; box-sizing: border-box; resize: vertical; min-height: 72px; padding: 10px 12px; border: 1px solid #cec0e9; border-radius: 12px; background: #fff; font: inherit; font-size: 15px; }
 .assistant-panel .assistant-chat-form .assistant-primary { min-height: 46px; font-size: 17px; }
+.assistant-panel .assistant-chat-steps { display: grid; gap: 2px; justify-self: start; max-width: 92%; padding: 0 4px; }
+.assistant-chat-steps li { display: flex; align-items: baseline; gap: 6px; font-size: 13px; line-height: 1.5; color: #5a4f6e; overflow-wrap: anywhere; }
+.assistant-chat-steps .assistant-icon { flex: none; color: #17633a; font-size: 12px; transform: translateY(1px); }

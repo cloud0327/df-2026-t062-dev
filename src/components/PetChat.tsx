@@ -1,9 +1,8 @@
-// 「書き方を相談する」: ペットに書き方を相談する。書き換えの案は差分のカードで出し、押したときだけ用紙に入れる。
+// 「書き方を相談する」: ペット（道具を使うエージェント）に書き方を相談する。したこと（作業ログ）を 1 行ずつ出す。書き換えの案は差分のカードで出し、押したときだけ用紙に入れる。
 import { useLayoutEffect, useRef, useState, type Dispatch, type FormEvent, type KeyboardEvent, type SetStateAction } from 'react'
-import { sentenceDiff } from '../../core/diff.ts'
 import { api } from '../lib/api.ts'
 import { PetIcon, PetMessage } from './PetVisuals.tsx'
-import { cardAction, historyFor, type ChatEntry, type ProposalCard } from './petChat.ts'
+import { cardAction, historyFor, sentenceChanges, type ChatEntry, type ProposalCard } from './petChat.ts'
 
 interface Props {
   documentId: string | undefined
@@ -19,16 +18,11 @@ interface Props {
 let nextId = 1
 
 function DiffLines({ before, after }: { before: string | null, after: string }) {
-  if (!before) return <p className="assistant-chat-ins"><span aria-label="足す文">＋</span>{after}</p>
-  const hunks = sentenceDiff(before, after)
+  const { del, ins } = sentenceChanges(before, after)
   return (
     <>
-      {hunks.map((h, i) => (
-        <div key={i}>
-          {h.del && <p className="assistant-chat-del"><span aria-label="前の文">−</span>{h.del}</p>}
-          {h.ins && <p className="assistant-chat-ins"><span aria-label="新しい文">＋</span>{h.ins}</p>}
-        </div>
-      ))}
+      {del.map((t, i) => <p key={`d${i}`} className="assistant-chat-del"><span aria-label="消える文">−</span>{t}</p>)}
+      {ins.map((t, i) => <p key={`i${i}`} className="assistant-chat-ins"><span aria-label="足す文">＋</span>{t}</p>)}
     </>
   )
 }
@@ -62,7 +56,7 @@ export function PetChat({ documentId, entries, setEntries, current, onSet, onJum
     try {
       const r = await api.chat(documentId, history)
       if (activeDoc.current !== documentId) return
-      setEntries((prev) => [...prev, { id: nextId++, role: 'pet', text: r.reply, proposals: r.proposals.map((p) => ({ ...p, state: 'ready' })) }])
+      setEntries((prev) => [...prev, { id: nextId++, role: 'pet', text: r.reply, steps: r.steps, proposals: r.proposals.map((p) => ({ ...p, state: 'ready' })) }])
     } catch {
       if (activeDoc.current !== documentId) return
       // 送れなかった相談は入力欄に戻す
@@ -97,6 +91,11 @@ export function PetChat({ documentId, entries, setEntries, current, onSet, onJum
       <ol className="assistant-chat-log" aria-live="polite">
         {entries.map((m) => (
           <li key={m.id} className={`assistant-chat-row assistant-chat-${m.role}`}>
+            {!!m.steps?.length && (
+              <ul className="assistant-chat-steps" aria-label="ペットがしたこと">
+                {m.steps.map((s, i) => <li key={i}><PetIcon name="check2" />{s}</li>)}
+              </ul>
+            )}
             <p className="assistant-chat-bubble">{m.text}</p>
             {m.proposals?.map((card) => {
               const id = `${m.id}:${card.key}`

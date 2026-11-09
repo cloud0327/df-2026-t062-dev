@@ -1,7 +1,7 @@
 // 画面の「書き方を相談する」の決めごと（src/components/petChat.ts）。
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { cardAction, historyFor, MAX_HISTORY, type ChatEntry, type ProposalCard } from '../src/components/petChat.ts'
+import { cardAction, historyFor, MAX_HISTORY, sentenceChanges, type ChatEntry, type ProposalCard } from '../src/components/petChat.ts'
 
 const card = (over: Partial<ProposalCard> = {}): ProposalCard => ({ key: 'complaint.person', label: '相談内容（本人）', before: '前の文。', after: '新しい文。', state: 'ready', ...over })
 
@@ -35,4 +35,12 @@ test('送るやり取りは、文だけを古い順に、最後の分だけに�
   assert.equal(h.length, MAX_HISTORY)
   assert.deepEqual(h.at(-1), { role: 'user', text: '今の相談' })
   assert.ok(h.every((m) => Object.keys(m).sort().join() === 'role,text'))
+})
+
+test('案のカードの差分は、文の途中で切らずに、消える文と足す文を出す', () => {
+  assert.deepEqual(sentenceChanges('病院ではシャワー浴。自宅の浴室は狭い。', '病院ではシャワーチェアで介助浴（NS）。自宅の浴室は狭い。'), {
+    del: ['病院ではシャワー浴。'], ins: ['病院ではシャワーチェアで介助浴（NS）。'],
+  })
+  assert.deepEqual(sentenceChanges(null, '農業を営んできた。'), { del: [], ins: ['農業を営んできた。'] })
+  assert.deepEqual(sentenceChanges('同じ。', '同じ。足した。'), { del: [], ins: ['足した。'] })
 })
