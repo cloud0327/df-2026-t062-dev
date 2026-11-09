@@ -9,6 +9,7 @@ import { useRecorder } from '../form/useRecorder.ts'
 import { api } from '../lib/api.ts'
 import { linkProps } from '../lib/router.tsx'
 import { incompleteFieldNames } from '../lib/jobStatus.ts'
+import { COMING_SOON_LABEL, newDocMenu } from '../lib/docMenu.ts'
 import { countText } from '../components/Chrome.tsx'
 import { SyncDifferences } from '../components/SyncDifferences.tsx'
 
@@ -97,8 +98,8 @@ export function PadWork({ clientId }: { clientId: string }) {
             <button className={menuItem(isAdm)} role="menuitem" type="button" onClick={() => void openDoc('admission')}>入院時情報提供書</button>
             <div style={{ height: 1, background: '#E1E4EA', margin: '6px 8px' }} />
             <div style={{ fontSize: 13, color: '#5A6270', padding: '4px 14px' }}>書類を作る（{client?.name}さんの今の情報から AI が書き込みます）</div>
-            {['モニタリング', 'デイの体験用紙'].map((t) => (
-              <button key={t} className="toc" role="menuitem" type="button" onClick={() => setDocOpen(false)} style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 0 }}>＋ {t}<span style={{ fontSize: 13, color: '#5A6270' }}>様式を登録すると作れます</span></button>
+            {newDocMenu.map((d) => (
+              <button key={d.label} className="toc" role="menuitem" type="button" disabled={!d.available} aria-disabled={!d.available} onClick={() => setDocOpen(false)} style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 0 }}>＋ {d.label}{!d.available && <span className="coming-soon" style={{ fontSize: 13 }}>{COMING_SOON_LABEL}</span>}</button>
             ))}
           </div>
         )}
