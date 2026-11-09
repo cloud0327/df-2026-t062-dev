@@ -8,7 +8,8 @@ import { useDocument } from '../form/useDocument.ts'
 import { api } from '../lib/api.ts'
 import { linkProps } from '../lib/router.tsx'
 import { PetHelper } from '../components/PetHelper.tsx'
-import {countText, downloadBlob } from '../components/Chrome.tsx'
+import { SyncDifferences } from '../components/SyncDifferences.tsx'
+import { countText, downloadBlob } from '../components/Chrome.tsx'
 
 export function PcWork({ clientId, staffName }: { clientId: string, staffName: string }) {
   const [tab, setTab] = useState<'assessment' | 'admission'>('assessment')
@@ -155,6 +156,11 @@ export function PcWork({ clientId, staffName }: { clientId: string, staffName: s
           <FieldConflicts state={state} />
           <div ref={scroller} onScroll={onScroll} style={{ flex: '1 1 auto', minHeight: 0, overflow: 'auto', background: '#E9EBEF', padding: '10px 21px 20px' }}>
             {state.error && <div role="alert" style={{ margin: `0 auto 12px`, maxWidth: maxW, color: '#A3261C', fontSize: 13 }}>うまく送れませんでした（{state.error}）。少し待ってから、もう一度直してください。</div>}
+            {client?.documents.find((d) => d.kind === 'admission') && (
+              <div style={{ margin: '0 auto', maxWidth: maxW }}>
+                <SyncDifferences targetId={client.documents.find((d) => d.kind === 'admission')!.id} refreshKey={state.doc} hasLocalEdits={state.hasLocalEdits} onApplied={() => { void state.reload(); setDocSaved(false) }} />
+              </div>
+            )}
             {isAdm && doc && (
               <div style={{ margin: '0 auto 14px', maxWidth: maxW }}>
                 <div role="status" style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: '#FFF4E5', border: '1px solid #F0C78A', borderRadius: 10, padding: '10px 14px', fontSize: 13, lineHeight: 1.5 }}>

@@ -154,6 +154,42 @@ test('入院時情報提供書を作るとアセスメントから写し、基�
   assert.deepEqual((p.body as { syncedTo: string[] }).syncedTo, ['アセスメント'])
 })
 
+test('元書類の変更を比較し、維持と反映を欄ごとに記録する', { skip }, async () => {
+  const made = await call('/api/clients', { method: 'POST', body: JSON.stringify({ name: '差異確認の見本' }) })
+  assert.equal(made.status, 201)
+  const { id: clientId, assessmentId } = made.body as { id: string, assessmentId: string }
+  const patch = (id: string, value: unknown, base: unknown) => call(`/api/documents/${id}/fields`, {
+    method: 'PATCH', body: JSON.stringify({ changes: [{ key: 'person.lifeHistory', value, base }] }),
+  })
+  assert.equal((await patch(assessmentId, '最初の記載', null)).status, 200)
+  assert.equal((await call(`/api/documents/${assessmentId}/save`, { method: 'POST', body: JSON.stringify({ scope: 'document' }) })).status, 200)
+  const admission = await call(`/api/clients/${clientId}/documents`, { method: 'POST', body: JSON.stringify({ form: 'admission' }) })
+  assert.equal(admission.status, 201)
+  const targetId = (admission.body as { id: string }).id
+  const getDiff = async () => (await call(`/api/documents/${targetId}/sync-differences`)).body as { differences: { key: string, source: unknown, target: unknown, status: string }[] }
+  assert.equal((await getDiff()).differences.length, 0)
+
+  assert.equal((await patch(assessmentId, '新しい記載', '最初の記載')).status, 200)
+  assert.equal((await getDiff()).differences.find((d) => d.key === 'person.lifeHistory')?.status, 'pending')
+  assert.equal((await call(`/api/documents/${assessmentId}/save`, { method: 'POST', body: JSON.stringify({ scope: 'document' }) })).status, 200)
+  const diff = (await getDiff()).differences.find((d) => d.key === 'person.lifeHistory')!
+  assert.equal(diff.status, 'review')
+  assert.equal((await call(`/api/documents/${targetId}/sync-decisions`, { method: 'POST', token: OTHER, body: JSON.stringify({ key: diff.key, decision: 'apply', source: diff.source, target: diff.target }) })).status, 404)
+  assert.equal((await call(`/api/documents/${targetId}/sync-decisions`, { method: 'POST', body: JSON.stringify({ key: diff.key, decision: 'keep', source: diff.source, target: diff.target }) })).status, 200)
+  assert.equal((await getDiff()).differences.find((d) => d.key === diff.key)?.status, 'different')
+
+  assert.equal((await patch(assessmentId, 'さらに新しい記載', '新しい記載')).status, 200)
+  assert.equal((await call(`/api/documents/${assessmentId}/save`, { method: 'POST', body: JSON.stringify({ scope: 'document' }) })).status, 200)
+  const next = (await getDiff()).differences.find((d) => d.key === diff.key)!
+  assert.equal(next.status, 'review')
+  assert.equal((await call(`/api/documents/${targetId}/sync-decisions`, { method: 'POST', body: JSON.stringify({ key: next.key, decision: 'apply', source: diff.source, target: next.target }) })).status, 409)
+  assert.equal((await call(`/api/documents/${targetId}/sync-decisions`, { method: 'POST', body: JSON.stringify({ key: next.key, decision: 'apply', source: next.source, target: next.target }) })).status, 200)
+  assert.equal((await getDiff()).differences.length, 0)
+  const target = (await call(`/api/documents/${targetId}`)).body as Doc
+  assert.equal(target.document.fields['person.lifeHistory'].value, 'さらに新しい記載')
+  assert.equal(target.document.saved['person.lifeHistory'], undefined)
+})
+
 test('録音を送るとジョブが走り、AI が用紙に書く（ケアマネが直した欄は残す）', { skip }, async () => {
   const { id: docId } = await docOf(ids.sato)
   const before = await call(`/api/documents/${docId}/fields`, { method: 'PATCH', body: JSON.stringify({ changes: [{ key: 'consulter', value: { name: '自分で書いた', relationship: '子' }, base: null }] }) })

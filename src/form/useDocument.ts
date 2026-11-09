@@ -493,6 +493,7 @@ export function useDocument(docId: string | undefined) {
     doc, form, pages, slotPage, current, saved, rendered, renderedSaved, marks, counts, total, updates, updatedFields, sync, notice, error,
     pendingCount: slotQueue.length + fieldQueue.size + conflicts.size,
     conflicts, resolveConflict,
+    hasLocalEdits: slotQueue.length + fieldQueue.size + conflicts.size + drafts.size + eraDrafts.size > 0,
     hasPdf: assets?.hasPdf ?? false,
     edit, type, commit, display, reasons, setValue, flush, reload: load, diffOf, imageOf, imageFailed,
     savePage: (no: number) => doSave({ scope: 'page', page: no }),
