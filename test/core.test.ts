@@ -56,3 +56,24 @@ test('文ごとの差分: 足した文、1 か所だけ保存、1 か所だけ�
   // 2 か所目（足した文）だけを保存すると、1 か所目（書き換え）は前の文のまま
   assert.equal(saveOneHunk(before, two, 1), after)
 })
+
+test('空の単行欄への追加: 変更前を空行で示すための追加 Hunk と復帰', () => {
+  const after = '佐藤 春子'
+  const hunks = sentenceDiff('', after)
+  assert.equal(hunks.length, 1)
+  assert.equal(hunks[0].del, '')
+  assert.equal(hunks[0].ins, after)
+  assert.equal(revertHunk(after, hunks[0]), '')
+  assert.equal(saveOneHunk('', after, 0), after)
+})
+
+test('句点を含む単行欄: 複数 Hunk の順序と個別保存・復帰', () => {
+  const before = '元の一文。'
+  const after = '追加した一文。元の一文。もう一つ追加。'
+  const hunks = sentenceDiff(before, after)
+  assert.equal(hunks.length, 2)
+  assert.equal(hunks[0].ins, '追加した一文。')
+  assert.equal(hunks[1].ins, 'もう一つ追加。')
+  assert.equal(revertHunk(after, hunks[0]), '元の一文。もう一つ追加。')
+  assert.equal(saveOneHunk(before, after, 1), '元の一文。もう一つ追加。')
+})
