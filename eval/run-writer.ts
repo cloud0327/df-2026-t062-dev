@@ -69,10 +69,11 @@ for (const [i, visit] of genpon.visits.entries()) {
   perVisit[t] = { seconds: (Date.now() - t0) / 1000, fields: Object.keys(fields).length, returned: Object.keys(r.values).length, failed: r.failed, usage: r.usage }
   total.calls += r.usage.calls
   total.promptTokens += r.usage.promptTokens
+  total.cachedTokens += r.usage.cachedTokens
   total.outputTokens += r.usage.outputTokens
   total.thinkingTokens += r.usage.thinkingTokens
   total.yen += r.usage.yen
-  console.log(`${t}: 欄 ${Object.keys(fields).length}、呼び出し ${r.usage.calls}、失敗 [${r.failed.join(', ')}]、${Math.round(r.usage.yen)} 円`)
+  console.log(`${t}: 欄 ${Object.keys(fields).length}、呼び出し ${r.usage.calls}、入力 ${r.usage.promptTokens}（キャッシュ ${r.usage.cachedTokens}）、思考 ${r.usage.thinkingTokens}、失敗 [${r.failed.join(', ')}]、${Math.round(r.usage.yen)} 円`)
 }
 
 write(join(out, 'usage.json'), { model: process.env.GEMINI_MODEL ?? 'gemini-3.8-flash', dry: args.dry, ...(args.dry ? { dryPromptChars: dryChars } : {}), total, visits: perVisit })
