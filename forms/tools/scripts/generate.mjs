@@ -3,15 +3,14 @@
 //   --form    様式（省略時は admission = 入院時情報提供書）
 //   --layout  全部の欄に印を入れた「位置確認用」の PDF を作る
 //   --out     書き出す PDF（省略時は out/<様式>_見本.pdf か out/<様式>_位置確認.pdf）
-//   データの JSON を省略すると samples/見本_花子.json
+//   データの JSON を省略すると forms/samples/見本_花子.json。相対の場所は forms/ から
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { generate } from '@pdfme/generator';
-import { ROOT, plugins, loadFont, loadTemplate, loadJson } from './lib.mjs';
+import { ROOT, FORMS_DIR, SEED, plugins, loadFont, loadTemplate, loadJson } from './lib.mjs';
 import { loadForm } from './forms.mjs';
-import { FORMS } from '../index.ts';
-import { renderAll } from '../../core/binding.ts';
+import { renderAll } from '../../../core/binding.ts';
 
 const args = process.argv.slice(2);
 const option = (name) => (args.indexOf(name) >= 0 ? args[args.indexOf(name) + 1] : undefined);
@@ -35,7 +34,7 @@ export function layoutInputs(schemas) {
   return inputs;
 }
 
-const inputs = layoutMode ? layoutInputs(template.schemas) : renderAll(FORMS[form.id].bindings, loadJson(new URL(dataPath, ROOT)));
+const inputs = layoutMode ? layoutInputs(template.schemas) : renderAll(loadJson(new URL(`${form.id}/bindings.json`, SEED)), loadJson(new URL(dataPath, FORMS_DIR)));
 const pdf = await generate({ template, inputs: [inputs], plugins, options: { font: loadFont() } });
 const out = outPath
   ? pathToFileURL(resolve(outPath))

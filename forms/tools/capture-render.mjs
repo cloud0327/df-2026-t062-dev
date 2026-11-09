@@ -4,7 +4,7 @@
 //   node forms/tools/capture-render.mjs
 // データの組: 空、見本・正解の全体、欄ごとの見本の値（fields.json の requires で前提を足す）、元号の境目・行の印などの組み合わせ。
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { loadForm } from '../scripts/forms.mjs';
+import { loadForm } from './scripts/forms.mjs';
 
 const read = (p) => JSON.parse(readFileSync(new URL(p, import.meta.url), 'utf8'));
 const FIELDS = read('../../core/fields.json');

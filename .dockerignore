@@ -24,4 +24,5 @@ public/
 eval/bench/
 .data/
 # レイアウトの抽出結果は実行時に読まない（大きい）
-forms/templates/*/layout.json
+forms/tools/
+*.pdf

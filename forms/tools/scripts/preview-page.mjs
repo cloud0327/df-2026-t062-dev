@@ -5,7 +5,7 @@
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { generate } from '@pdfme/generator';
-import { ROOT, plugins, loadFont, loadJson } from './lib.mjs';
+import { ROOT, FORMS_DIR, plugins, loadFont, loadJson } from './lib.mjs';
 import { loadLayout } from './load-layout.mjs';
 import { alignSchemas, printReport } from './align.mjs';
 import { readFileSync } from 'node:fs';
@@ -21,7 +21,7 @@ const slots = aligned.schemas[mod.pdfPage - 1];
 const names = slots.map((s) => s.name);
 const dup = names.filter((n, i) => names.indexOf(n) !== i);
 if (dup.length) throw new Error(`欄の名前が重複: ${[...new Set(dup)].join(', ')}`);
-const sample = loadJson(new URL('samples/見本_花子.json', ROOT));
+const sample = loadJson(new URL('samples/見本_花子.json', FORMS_DIR));
 const values = mod.inputs(sample);
 const empty = mod.inputs({});
 const missing = names.filter((n) => !(n in empty));
@@ -29,7 +29,7 @@ const extra = Object.keys(empty).filter((n) => !names.includes(n));
 if (missing.length) console.log('問題: inputs が値を出さない欄:', missing.join(', '));
 if (extra.length) console.log('問題: inputs が出すが slots にない欄:', extra.join(', '));
 for (const [k, v] of Object.entries(values)) if (typeof v !== 'string') console.log(`問題: 欄 ${k} の値が文字列でない`);
-const fields = loadJson(new URL('../core/fields.json', ROOT));
+const fields = loadJson(new URL('../core/fields.json', FORMS_DIR));
 const keys = new Set(fields.fields.filter((f) => f.key).map((f) => f.key));
 for (const k of mod.usesKeys) if (!keys.has(k)) console.log(`問題: fields.json にない key: ${k}`);
 

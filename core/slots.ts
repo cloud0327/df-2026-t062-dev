@@ -2,7 +2,7 @@
 //   renderSlots … 欄の値 → 印字欄の文字（PDF・画面の表示）
 //   editSlot    … 印字欄を直した → どの key をどう変えるか、または断る理由
 //   slotMarks   … 保存した値と今の値の違い → 印字欄ごとの印（橙＝AI、黄＝ケアマネ）
-import type { FormDef } from '../forms/index.ts'
+import type { FormDef } from './form.ts'
 import { editSlot as editBinding, keysOf, renderAll, type Change, type EditResult, type Values } from './binding.ts'
 
 export type { Change, EditResult, Values }

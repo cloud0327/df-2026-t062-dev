@@ -1,6 +1,6 @@
 // 様式のページごとの欄の並び（位置・種類）。キャンバスと同じく、用紙の画像の上に % の位置で重ねる。
-import { FORMS, type FormDef, type FormId, type PageDef } from '../../forms/index.ts'
 import type { Binding } from '../../core/binding.ts'
+import type { FormDef, FormPage } from '../../core/form.ts'
 
 export const W = 210
 export const H = 297
@@ -29,7 +29,7 @@ export interface SlotView {
   label: string
 }
 
-export interface PageLayout extends PageDef {
+export interface PageLayout extends FormPage {
   slots: SlotView[]
 }
 
@@ -51,15 +51,15 @@ function classify(binding: Binding | undefined): Omit<SlotView, 'name' | 'x' | '
   return { kind: binding.ui === 'area' ? 'area' : 'text', binding }
 }
 
-const cache = new Map<FormId, PageLayout[]>()
+/** 様式の版ごとに覚える（版の中身は変わらない） */
+const cache = new Map<string, PageLayout[]>()
 
-export function pagesOf(formId: FormId): PageLayout[] {
-  const hit = cache.get(formId)
+export function pagesOf(form: FormDef): PageLayout[] {
+  const hit = cache.get(form.id)
   if (hit) return hit
-  const form: FormDef = FORMS[formId]
   const out = form.pages.map((p) => ({
     ...p,
-    slots: (form.template.schemas[p.pdfIndex] ?? []).map((s): SlotView => ({
+    slots: (form.schemas[p.pdfIndex] ?? []).map((s): SlotView => ({
       name: s.name,
       x: s.position.x,
       y: s.position.y,
@@ -72,6 +72,6 @@ export function pagesOf(formId: FormId): PageLayout[] {
       ...classify(form.bindings[s.name]),
     })),
   }))
-  cache.set(formId, out)
+  cache.set(form.id, out)
   return out
 }

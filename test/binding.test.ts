@@ -2,11 +2,13 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
-import { FORMS, type FormId } from '../forms/index.ts'
+import { readSeed } from '../forms/admin/files.ts'
+import type { FormKind } from '../core/form.ts'
 import { checkBindings, editSlot, keysOf, renderAll, renderSlot, specOf, type Binding, type Values } from '../core/binding.ts'
 import { choicesOf } from '../core/fields.ts'
 
-const IDS: FormId[] = ['assessment', 'admission']
+const IDS: FormKind[] = ['assessment', 'admission']
+const FORMS = { assessment: readSeed('assessment'), admission: readSeed('admission') }
 const json = (rel: string) => JSON.parse(readFileSync(new URL(rel, import.meta.url), 'utf8'))
 const gold = (v: string): Values => { const raw = json(`../eval/scenario/gold/用紙/アセスメント_${v}.json`); delete raw._comment; return raw }
 const apply = (values: Values, r: ReturnType<typeof editSlot>): Values => {
@@ -17,7 +19,7 @@ const apply = (values: Values, r: ReturnType<typeof editSlot>): Values => {
 }
 
 /** 前の手書きの変換と、わざと違えたところ（データの組 → 印字欄 → 理由） */
-const INTENDED: Record<FormId, Record<string, Record<string, string>>> = {
+const INTENDED: Record<FormKind, Record<string, Record<string, string>>> = {
   assessment: {},
   admission: Object.fromEntries(['extra:status=新規申請中', 'extra:status=未申請'].map((c) => [c, {
     '1_要支援': '要介護度は、認定済・区分変更申請中・更新申請中のときだけ出す（fields.json の requires）',
@@ -29,7 +31,7 @@ for (const id of IDS) {
   const form = FORMS[id]
 
   test(`${id}: 全部の印字欄に対応があり、対応の中身が正しい`, () => {
-    const names = form.template.schemas.flat().map((s) => s.name)
+    const names = form.schemas.flat().map((s) => s.name)
     assert.deepEqual(names.filter((n) => !form.bindings[n]), [], '対応のない印字欄')
     assert.deepEqual(Object.keys(form.bindings).filter((n) => !names.includes(n)), [], '印字欄のない対応')
     assert.deepEqual(checkBindings(form.bindings), [])

@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import type { Db } from './pool.ts'
 import { createPool } from './pool.ts'
+import { seedForms } from '../forms/admin/seed.ts'
 import { applyBatch, createClient, saveDocument, staffByAuth, type Staff } from './repo.ts'
 
 const load = (u: string) => {
@@ -18,6 +19,8 @@ const load = (u: string) => {
 export interface SeedResult { officeId: string, staff: Staff, clients: Record<string, string> }
 
 export async function seed(db: Db, opts: { email?: string, authUid?: string, officeName?: string } = {}): Promise<SeedResult> {
+  // 様式（forms/seed/）が入っていなければ入れる（入っていれば何もしない）
+  await seedForms(db)
   const email = opts.email ?? 'kato@example.com'
   const authUid = opts.authUid ?? `dev:${email}`
   const office = (await db.query("INSERT INTO offices (name, phone, fax) VALUES ($1, '', '') RETURNING id", [opts.officeName ?? 'みほん居宅介護支援事業所'])).rows[0]

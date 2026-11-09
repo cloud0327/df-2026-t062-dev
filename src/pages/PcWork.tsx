@@ -13,7 +13,7 @@ export function PcWork({ clientId, staffName }: { clientId: string, staffName: s
   const [tab, setTab] = useState<'assessment' | 'admission'>('assessment')
   const reloadDoc = useRef<() => void>(() => {})
   const { client, reload: reloadClient } = useClient(clientId, () => reloadDoc.current())
-  const docId = client?.documents.find((d) => d.form === tab)?.id
+  const docId = client?.documents.find((d) => d.kind === tab)?.id
   const state = useDocument(docId)
   reloadDoc.current = () => { void state.reload(); void reloadClient() }
   const [zoom, setZoom] = useState(100)
@@ -29,7 +29,7 @@ export function PcWork({ clientId, staffName }: { clientId: string, staffName: s
 
   const openAdmission = useCallback(async () => {
     setNewOpen(false)
-    if (!client?.documents.some((d) => d.form === 'admission')) {
+    if (!client?.documents.some((d) => d.kind === 'admission')) {
       await api.createAdmission(clientId)
       await reloadClient()
     }

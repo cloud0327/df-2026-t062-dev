@@ -1,6 +1,6 @@
 // 移しかえの道具: 前の対応表（templates/<様式>/slotmap.json）と、手で書いた対応から、
 // forms/seed/<様式>/bindings.json（印字欄 → 対応）を作る。2026-11-09 に 1 回使った。
-// これからは bindings.json が本体。直すときは bindings.json を直す（この道具は、どう移したかの記録として残す）。
+// これからは bindings.json が本体。直すときは bindings.json を直す（この道具は、どう移したかの記録として残す。slotmap.json は消したので、もう動かない）。
 //
 //   node forms/tools/build-bindings.mjs
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
@@ -195,7 +195,7 @@ function write(id, bindings, order) {
 }
 
 for (const id of ['assessment', 'admission']) {
-  const template = read(`../templates/${id}/template.json`);
+  const template = read(`../seed/${id}/template.json`);
   const slotmap = read(`../templates/${id}/slotmap.json`);
   const slots = template.schemas.flat();
   const byName = new Map(slots.map((s) => [s.name, s]));

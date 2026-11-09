@@ -3,7 +3,7 @@
 // 欄の位置は、元の PDF（templates/admission/base.pdf）の文字と「□」の座標を
 // pdfplumber で取り出して決めた（単位は mm、左上が原点）。
 //
-// 注意: これを実行すると templates/admission/template.json を上書きする。
+// 注意: これを実行すると forms/seed/admission/template.json を上書きする。
 // Designer（npm run designer）で位置を直したあとは、このスクリプトを実行しないこと。
 import { writeFileSync } from 'node:fs';
 import { loadLayout } from './load-layout.mjs';
@@ -233,5 +233,5 @@ const aligned = alignSchemas([schemas], loadLayout('admission'));
 console.log('位置をそろえた結果:');
 console.log(printReport(aligned.report));
 const template = { basePdf: 'base.pdf', schemas: aligned.schemas };
-writeFileSync(new URL('../templates/admission/template.json', import.meta.url), JSON.stringify(template, null, 2));
+writeFileSync(new URL('../../seed/admission/template.json', import.meta.url), JSON.stringify(template, null, 2));
 console.log(`template.json を書き出しました（欄 ${schemas.length} 個）`);

@@ -28,10 +28,10 @@ COPY --chown=node:node api/ ./api/
 COPY --chown=node:node core/ ./core/
 COPY --chown=node:node db/ ./db/
 COPY --chown=node:node worker/ ./worker/
-COPY --chown=node:node forms/index.ts ./forms/index.ts
-COPY --chown=node:node forms/templates/ ./forms/templates/
+# 様式は DB の版を使う。forms/seed（登録する様式のデータ）と forms/admin（npm run forms:seed・forms:rebase・forms:check）だけを入れる。
+# 様式を作る道具（forms/tools）と元の PDF は入れない（PDF とページの画像は非公開の置き場）
 COPY --chown=node:node forms/seed/ ./forms/seed/
-COPY --chown=node:node forms/scripts/layout.mjs forms/scripts/forms.mjs ./forms/scripts/
+COPY --chown=node:node forms/admin/ ./forms/admin/
 COPY --chown=node:node forms/fonts/ ./forms/fonts/
 # db/seed.ts（demo 環境の見本のデータ）が読む架空の利用者
 COPY --chown=node:node forms/samples/ ./forms/samples/

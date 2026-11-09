@@ -1,47 +1,57 @@
-# 書類のテンプレート（pdfme）
+# 様式（アセスメント用紙・入院時情報提供書）
 
-利用者のデータ（[`../fields.json`](../fields.json) の key と値）から、決まった様式の PDF を作る。
+様式は、コードではなく**版つきのデータ**です。サービスは DB の様式の版（`form_template_versions`）を使い、書類は作ったときの版を指します（[DB 設計](../docs/DB設計.md)）。
 
-| 様式 | フォルダ | 欄の数 | 元の PDF |
+| 様式 | 種類（kind） | 印字欄 | 元の PDF |
 |---|---|---|---|
-| 入院時情報提供書 | `templates/admission/` | 141 | 地域の連携会議の版（2018.10）、1 ページ（リポジトリには入れていない） |
-| アセスメント用紙 | `templates/assessment/` | 1,223 | 全社協「居宅サービス計画ガイドライン ver.3」、12 ページ（表紙を含む） |
+| アセスメント用紙 | `assessment` | 1,223 | 全社協「居宅サービス計画ガイドライン ver.3」、12 ページ（表紙を含む）。公式の URL から取る |
+| 入院時情報提供書 | `admission` | 141 | 地域の連携会議の版（2018.10）、1 ページ。公開されていないので、手元にあるときだけ |
 
-どちらも同じ見本データ（`samples/見本_花子.json`、架空の利用者）から作れる。アセスメントで聞いた情報が入院時の書類にも流れることを、この見本で確かめられる。
+## フォルダ
 
-## 使い方
+| フォルダ | 中身 |
+|---|---|
+| `seed/<種類>/` | 登録する様式のデータ。`form.json`（名前・発行者・出どころの URL・元の PDF のハッシュ・ページ）、`template.json`（印字欄の位置。pdfme の schemas）、`bindings.json`（印字欄 → 欄の値の対応。書き方は [データの定義](../docs/データの定義.md) の「印字欄の対応」） |
+| `admin/` | 管理のスクリプト（下の表）。サービスの置き場と DB に入れる |
+| `tools/` | 様式を作る道具（座標を測る・欄を置く・位置をそろえる・PDF を試しに作る）と、前の手書きの変換から対応へ移した道具。サービスは使わない。元の PDF と座標データ（`tools/templates/<種類>/base.pdf`・`layout.json`）は公開リポジトリに入れない（`.gitignore`） |
+| `samples/` | 架空の利用者のデータ（`見本_花子.json`）。実在の人ではない |
+| `fonts/` | BIZ UDP ゴシック（SIL Open Font License。`OFL.txt`） |
 
-最初に 1 回だけ:
+## 管理のスクリプト
 
-```sh
-cd forms
-pnpm install
-```
+| やること | コマンド | 中身 |
+|---|---|---|
+| 出す前に確かめる | `npm run forms:check` | 印字欄と対応が 1 対 1、対応の key・項目が fields.json にあり、丸・✓ の直しが決まっている。対応が読む key と fields.json の `forms` が一致する。見本データで全部の欄が文字になる |
+| 版を登録する | `npm run forms:seed` | `seed/` を全事業所の様式の版として DB に入れる。中身が今の版と同じなら何もしない。違えば新しい版を作って使う版（published）にし、前の版は retired にする。`npm run db:seed` も先にこれを流す |
+| PDF と画像を置き場に入れる | `npm run forms:assets`（PDF だけなら `-- --pdf-only`） | 使う版の元の PDF（ハッシュで確かめる）と、ページの画像（pdftoppm。見せる枠だけ）を、非公開の置き場の `<様式の id>/v<版>/` に入れる。上書きしない |
+| 書類の向き先を移す | `npm run forms:rebase`（見るだけなら `-- --dry-run`） | 古い版を指す書類を使う版に移す。新しい版が、古い版の読んでいた key を全部読むときだけ（読まない key があると、その値が用紙から消えるため）。移した記録を `audit_events` に残す |
+| 元の PDF を手元に用意する | `npm run forms:fetch` | 様式を作る道具とテストのために、`tools/templates/<種類>/base.pdf` を用意する |
+
+様式を直す流れ: `seed/` を直す → `forms:check` → `forms:seed`（新しい版）→ `forms:assets` → `forms:rebase`。版の中身は DB が書き換えを止めるので、必ず新しい版になります。
+
+## 様式を作る道具（`tools/`）
 
 | やりたいこと | コマンド | 結果 |
 |---|---|---|
-| 画面で欄の位置を見る・直す | `pnpm designer` | ブラウザで Designer が開く。上の「入院時情報提供書」「アセスメント」で様式を切り替える。欄をドラッグで動かし、「位置を保存」で `template.json` に書き戻す |
-| 様式の上で直接入力してみる（試作） | `pnpm form` | ブラウザで様式が開き、見本データが入った状態になる。文字の欄はクリックして入力、丸と ✓ はクリックで付け外し。「この内容で PDF を作る」で直した内容の PDF が開く。直した内容はまだどこにも保存しない |
-| 見本データで PDF を作る | `node scripts/generate.mjs --form admission`（または `--form assessment`） | `out/<様式>_見本.pdf` |
-| 別のデータで PDF を作る | `node scripts/generate.mjs --form assessment --out <PDF> <データの JSON>` | `--out` に書いた場所。演習シナリオの正解を印字する例は [`../scenario/README.md`](../scenario/README.md) |
-| 欄の位置だけを確かめる PDF を作る | 上に `--layout` を付ける | `out/<様式>_位置確認.pdf`（全部の欄に ✓・丸・欄の名前が入る） |
-| 食い違いを探す | `pnpm check` | 下の「確かめていること」を見る |
-| 印字の位置のずれを測る | `python3 scripts/audit_alignment.py assessment`（先に見本と位置確認用の PDF を作る） | ✓・丸・罫線の枠・1 行の文字ごとの、ずれの中央値と最大値 |
-| アセスメントの 1 ページだけを試す | `node scripts/preview-page.mjs p5` | `out/preview/p5_見本.png` と `p5_位置確認.png`。template.json は書き換えない |
+| 見本データで PDF を作る | `node forms/tools/scripts/generate.mjs --form admission`（または `--form assessment`） | `forms/tools/out/<様式>_見本.pdf` |
+| 別のデータで PDF を作る | `node forms/tools/scripts/generate.mjs --form assessment --out <PDF> <データの JSON>` | `--out` に書いた場所。データの場所は `forms/` から |
+| 欄の位置だけを確かめる PDF を作る | 上に `--layout` を付ける | `forms/tools/out/<様式>_位置確認.pdf`（全部の欄に ✓・丸・欄の名前が入る） |
+| 印字の位置のずれを測る | `python3 forms/tools/scripts/audit_alignment.py assessment`（先に見本と位置確認用の PDF を作る） | ✓・丸・罫線の枠・1 行の文字ごとの、ずれの中央値と最大値 |
+| アセスメントの 1 ページだけを試す | `node forms/tools/scripts/preview-page.mjs p5` | `forms/tools/out/preview/p5_見本.png` と `p5_位置確認.png` |
 
 ## 仕組み
 
 ```
 利用者のデータ（fields.json の key と値）
-   │  変換 … 決まった手順で欄の値にする（AI は使わない）
+   │  対応（bindings）… 共通の仕組み core/binding.ts で欄の文字にする（AI は使わない）。画面で直した文字は同じ対応で値に戻す
    ▼
-欄の値（{ "p5_1-3_2": "true", "p1_本人氏名": "見本 花子", "1_要介護": "✓", … }）
-   │  template.json … 欄の位置（pdfme のテンプレート）
+欄の文字（{ "p5_1-3_2": "true", "p1_本人氏名": "見本 花子", "1_要介護": "✓", … }）
+   │  schemas … 欄の位置（pdfme のテンプレート）
    ▼
-PDF（base.pdf の上に印字）
+PDF（元の PDF の上に印字）
 ```
 
-- **意味は `fields.json`、位置は `template.json`、その 2 つを変換プログラムがつなぐ。** pdfme は書類の意味を知らない。
+- **意味は `fields.json`、位置は `template.json`、その 2 つを対応（`bindings.json`）がつなぐ。** pdfme は書類の意味を知らない。
 - 欄の種類は 2 つ。
   - **文字**（pdfme の `text`）: 氏名などの文字、印刷済みの「□」の上に置く「✓」、表のマスの「○ △ ✓」。pdfme のチェックボックスは、チェックしていないときも四角を描いて印刷済みの □ と二重になるので使っていない。
   - **丸**（pdfme の `circleMark`）: 印刷済みの文字を丸で囲む。「男・女」「明・大・昭」「有・無」「同・別」、要介護認定項目の番号「1 2 3 4」など。
@@ -53,16 +63,16 @@ PDF（base.pdf の上に印字）
 
 1,223 か所の位置を手で測らずに済むよう、**書類の文字を目印にして位置を決める**。
 
-1. `scripts/extract_layout.py` で、元の PDF から文字・罫線の座標を取り出して `layout.json` に書く（pdfplumber が要る）。
-2. ページごとのファイル `templates/assessment/pages/p1.mjs`〜`p11.mjs` が、`layout.json` の文字（「交付日」「□１割」など）を探して欄を置く。同じファイルに「データ → 欄の値」の変換も書く。
-3. `scripts/align.mjs` が、全部の欄の位置を書類の印刷にぴったり合わせる（下の「位置のそろえ方」）。
-4. `scripts/build-assessment-template.mjs` が全ページをまとめて `template.json` を書く。
+1. `tools/scripts/extract_layout.py` で、元の PDF から文字・罫線の座標を取り出して `layout.json` に書く（pdfplumber が要る）。
+2. ページごとのファイル `tools/templates/assessment/pages/p1.mjs`〜`p11.mjs` が、`layout.json` の文字（「交付日」「□１割」など）を探して欄を置く（同じファイルの `inputs` は前の手書きの変換で、もう使わない）。
+3. `tools/scripts/align.mjs` が、全部の欄の位置を書類の印刷にぴったり合わせる（下の「位置のそろえ方」）。
+4. `tools/scripts/build-assessment-template.mjs` が全ページをまとめて `seed/assessment/template.json` を書く。印字欄を足したら、`seed/assessment/bindings.json` に対応も書く。
 
 ページのファイルの書き方は `pages/p1.mjs` の先頭にある。p.5〜p.7 で共通の道具は `lib-p567.mjs`。
 
 地域や事業所ごとに別の様式を足すときも、同じ手順で作れる（1・3・4 はそのまま使える）。入院時情報提供書も 3 の処理を通している。
 
-## 位置のそろえ方（`scripts/align.mjs`）
+## 位置のそろえ方（`tools/scripts/align.mjs`）
 
 pdfme が文字を描く高さは、欄の大きさ・文字の大きさ・フォントの寸法から決まった計算で出る（`@pdfme/schemas` の text の描画と同じ式を `baselineFromTop` に写した）。一方、書類の文字の位置は `layout.json` に、**基準線**（PDF の中の正確な値）と**インクの範囲**（ページを画像にして測った値）で持っている。この 2 つを使って、欄を次のように動かす。
 
@@ -77,37 +87,6 @@ pdfme が文字を描く高さは、欄の大きさ・文字の大きさ・フ�
 pdfplumber の「文字の枠」は、書類のフォントの情報によって実際の字より上下にずれる（例: □ は約 0.4mm 下）。そのため、位置は文字の枠ではなく基準線とインクで合わせている。
 
 2026-11-07 時点の測定（`audit_alignment.py`、見本データの PDF）: ✓ と丸は全部 0.05mm 以内。1 行の文字は 140 個中 138 個が 0.3mm 以内（残りは、比べる相手を測る側が取り違えたもの）。罫線の枠は、罫線との間が全部 1.2〜1.3mm。
-
-## ファイル
-
-| ファイル | 中身 |
-|---|---|
-| `templates/<様式>/base.pdf` | 元の様式（リポジトリには入れていない。上の注意） |
-| `templates/<様式>/template.json` | 欄の位置。**Designer で直したらこれが正**。`basePdf` はファイル名だけを持つ |
-| `seed/<様式>/bindings.json` | **印字欄 → 欄の値の対応**（1 行 1 欄）。表示と直しは `core/binding.ts` の共通の仕組み。書き方は [`../docs/データの定義.md`](../docs/データの定義.md) の「印字欄の対応」 |
-| `templates/admission/mapping.mjs` | 入院時情報提供書の欄の配置。`toInputs` は前の手書きの変換で、サービスは使わない（`tools/capture-render.mjs` が前の表示を残すのに使った） |
-| `templates/assessment/pages/*.mjs`、`index.mjs`、`lib-p567.mjs` | アセスメント用紙の欄の配置。`inputs` は前の手書きの変換（同上） |
-| `tools/build-bindings.mjs`、`tools/capture-render.mjs` | 前の変換から対応へ移したときの道具（2026-11-09）。今は `bindings.json` が本体 |
-| `scripts/build-*-template.mjs` | `template.json` を作る。**Designer で直したあとに実行すると上書きされる** |
-| `scripts/generate.mjs`、`check.mjs`、`preview-page.mjs`、`dump-page.mjs` | PDF を作る、食い違いを探す、1 ページだけ試す、座標を一覧で見る |
-| `scripts/layout.mjs` | 文字を目印に位置を探す道具と、欄を作る関数 |
-| `scripts/align.mjs` | 欄の位置を書類の印刷にぴったり合わせる |
-| `scripts/audit_alignment.py` | 作った PDF を画像にして、印字の位置のずれを測る |
-| `templates/<様式>/layout.json` | 元の PDF の文字（枠・基準線・インクの範囲）と罫線の座標。`scripts/extract_layout.py` が作る |
-| `scripts/forms.mjs` | 様式の一覧 |
-| `samples/見本_花子.json` | 架空の利用者のデータ。実在の人ではない |
-| `designer/`、`vite.config.js` | Designer の画面（`index.html`）と、様式に直接入力する試作の画面（`form.html`）。見本データの変換はサーバー側で行う（変換がファイルを読むため） |
-| `fonts/` | BIZ UDP ゴシック（SIL Open Font License。`OFL.txt`） |
-
-## 確かめていること（`npm run forms:check`）
-
-様式ごとに:
-
-1. テンプレートの印字欄と、対応（`bindings.json`）が 1 対 1 で一致する。対応の key・項目が `fields.json` にあり、丸・✓ を付け外ししたときの動きが決まっている
-2. 対応が読む key と、`fields.json` で「この様式に入る」と書いた欄（`forms`）が一致する（図は人が描くので除く）
-3. 見本データを変換したとき、全部の欄の値が文字列になる
-
-あわせて、見本データの key がすべて `fields.json` にあることも確かめる。
 
 ## 決めたこと
 

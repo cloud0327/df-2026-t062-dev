@@ -14,12 +14,15 @@
     "start:worker": "node worker/index.ts",
     "db:migrate": "node db/migrate.ts",
     "db:seed": "node db/seed.ts",
-    "forms:check": "node forms/scripts/check.mjs",
+    "forms:check": "node forms/admin/check.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --test",
     "build": "vite build && node scripts/write-version.mjs",
     "preview": "vite preview",
-    "forms:fetch": "node forms/scripts/fetch.mjs"
+    "forms:fetch": "node forms/tools/scripts/fetch.mjs",
+    "forms:seed": "node forms/admin/seed.ts",
+    "forms:assets": "node forms/admin/assets.ts",
+    "forms:rebase": "node forms/admin/rebase.ts"
   },
   "devDependencies": {
     "@types/node": "24.19.2",

@@ -6,7 +6,7 @@
 //   freeText                   … 自由記述の枠
 import { textSlot as T, checkSlot as C, circleSlot as O, ck, mark, s } from '../../scripts/layout.mjs';
 
-import FIELDS from '../../../core/fields.json' with { type: 'json' };
+import FIELDS from '../../../../core/fields.json' with { type: 'json' };
 const BYKEY = new Map(FIELDS.fields.filter((f) => f.key).map((f) => [f.key, f]));
 
 /** fields.json の key の選択肢（choiceSets の名前なら引く） */

@@ -26,15 +26,16 @@ interface Props {
 function FormPageInner({ page, state, touch, disabled, batchLabel, dim, glow }: Props) {
   const [open, setOpen] = useState('')
   const [diffOpen, setDiffOpen] = useState('')
-  // 様式の画像は公開リポジトリに入れていない（forms/scripts/fetch.mjs で作る）。ないときは白い紙に欄だけを出す
+  // 様式の画像は非公開の置き場にある（期限つきの URL）。読めなければ 1 回だけ URL を取り直し、それでもだめなら白い紙に欄だけを出す
   const [noImage, setNoImage] = useState(false)
-  const { rendered, marks, edit } = state
+  const { marks, edit, display } = state
+  const image = state.imageOf(page.no)
 
   const cell = open ? page.slots.find((s) => s.name === open && s.kind === 'cell') : undefined
   const freshCls = glow ? 'ov fresh glow' : 'ov fresh'
 
   const renderMark = (s: SlotView) => {
-    const v = rendered[s.name] ?? ''
+    const v = display(s.name)
     const on = s.kind === 'circle' ? v === 'true' : v === '✓'
     const m = marks.get(s.name)
     const pad = s.kind === 'check' ? (touch ? 1.2 : 1.0) : 0.2
@@ -58,7 +59,7 @@ function FormPageInner({ page, state, touch, disabled, batchLabel, dim, glow }: 
   }
 
   const renderCell = (s: SlotView) => {
-    const v = rendered[s.name] ?? ''
+    const v = display(s.name)
     const box = pos(s.x + 0.15, s.y + 0.15, Math.max(0.5, s.w - 0.3), Math.max(0.5, s.h - 0.3))
     const multi = (s.cellOptions?.length ?? 0) > 1
     const isOpen = open === s.name
@@ -102,17 +103,38 @@ function FormPageInner({ page, state, touch, disabled, batchLabel, dim, glow }: 
       textAlign: s.align,
       ...(m === 'cm' ? YELLOW : m === 'ai' ? ORANGE : BLUE),
     }
-    const value = rendered[s.name] ?? ''
-    return multi
-      ? <FitTextarea key={s.name} label={s.label} value={value} disabled={disabled} onChange={(t) => edit(s.name, t)} style={style} base={fsz(s.pt)} />
-      : <input key={s.name} className="fx" type="text" aria-label={s.label} value={value} disabled={disabled} onChange={(e) => edit(s.name, e.target.value)} style={style} />
+    const value = display(s.name)
+    const reason = state.reasons.get(s.name)
+    const field = multi
+      ? <FitTextarea key={s.name} label={s.label} value={value} disabled={disabled} onChange={(t) => state.type(s.name, t)} onBlur={() => state.commit(s.name)} style={style} base={fsz(s.pt)} />
+      : (
+        <input
+          key={s.name} className="fx" type="text" aria-label={s.label} aria-invalid={!!reason} value={value} disabled={disabled}
+          onChange={(e) => state.type(s.name, e.target.value)}
+          onBlur={() => state.commit(s.name)}
+          // 変換中の Enter は確定に使わない
+          onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) state.commit(s.name) }}
+          style={reason ? { ...style, outline: '1.5px solid #C2410C' } : style}
+        />
+      )
+    if (!reason) return field
+    return (
+      <span key={s.name}>
+        {field}
+        <span role="alert" style={{
+          position: 'absolute', left: pc(s.x, W), top: pc(s.y + s.h + 0.6, H), zIndex: 6, maxWidth: touch ? 320 : 260,
+          background: '#FFFFFF', color: '#9A3412', border: '1px solid #FDBA74', borderRadius: 8, padding: touch ? '6px 10px' : '4px 8px',
+          fontSize: touch ? 13 : 11, lineHeight: 1.45, boxShadow: '0 4px 14px rgba(20,24,32,0.14)', pointerEvents: 'none',
+        }}>{reason}</span>
+      </span>
+    )
   }
 
   return (
     <div className="pg">
-      {noImage
-        ? <div className="pimg" role="img" aria-label={page.title} style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: '4%', color: '#8A919C', fontSize: 12 }}>様式の画像がありません（npm run forms:fetch）</div>
-        : <img className="pimg" src={page.image} alt={`${page.title}`} style={dim ? { opacity: 0.55 } : undefined} draggable={false} onError={() => setNoImage(true)} />}
+      {noImage || !image
+        ? <div className="pimg" role="img" aria-label={page.title} style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: '4%', color: '#8A919C', fontSize: 12 }}>{image === null && !noImage ? '様式の画像が置き場にありません（npm run forms:assets）' : ''}</div>
+        : <img className="pimg" src={image} alt={`${page.title}`} style={dim ? { opacity: 0.55 } : undefined} draggable={false} onError={() => { if (!state.imageFailed()) setNoImage(true) }} />}
       {page.slots.map((s) => (s.kind === 'circle' || s.kind === 'check' ? renderMark(s) : s.kind === 'cell' ? renderCell(s) : renderText(s)))}
       {cell && (
         <div role="dialog" aria-label={cell.label} style={{
@@ -125,7 +147,7 @@ function FormPageInner({ page, state, touch, disabled, batchLabel, dim, glow }: 
             <button type="button" onClick={() => setOpen('')} style={{ font: 'inherit', fontSize: touch ? 15 : 13, border: 0, background: 'transparent', color: '#2453C4', cursor: 'pointer', padding: touch ? '0 4px' : '2px 4px', minHeight: touch ? 40 : undefined, whiteSpace: 'nowrap' }}>閉じる</button>
           </div>
           {cell.cellOptions!.map((o) => {
-            const sel = (rendered[cell.name] ?? '') === o.text
+            const sel = display(cell.name) === o.text
             return (
               <button key={o.text} type="button" className={`opt${sel ? ' opt-on' : ''}`} aria-pressed={sel} onClick={() => { edit(cell.name, o.text); setOpen('') }}>
                 <span className="sym" aria-hidden="true">{o.text}</span>{o.label}
@@ -140,10 +162,10 @@ function FormPageInner({ page, state, touch, disabled, batchLabel, dim, glow }: 
 }
 
 /** 長い文章の欄（入りきらなければ文字を小さくする） */
-function FitTextarea({ label, value, disabled, onChange, style, base }: { label: string, value: string, disabled: boolean, onChange: (t: string) => void, style: CSSProperties, base: string }) {
+function FitTextarea({ label, value, disabled, onChange, onBlur, style, base }: { label: string, value: string, disabled: boolean, onChange: (t: string) => void, onBlur: () => void, style: CSSProperties, base: string }) {
   const ref = useRef<HTMLTextAreaElement>(null)
   const s = useFitScale(ref, base, value)
-  return <textarea ref={ref} className="fx fxa" aria-label={label} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} style={{ ...style, fontSize: scaled(base, s) }} />
+  return <textarea ref={ref} className="fx fxa" aria-label={label} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} onBlur={onBlur} style={{ ...style, fontSize: scaled(base, s) }} />
 }
 
 export const FormPage = memo(FormPageInner)

@@ -7,7 +7,9 @@
 | 決まり | 中身 |
 |---|---|
 | 事業所で分ける | すべての表に `office_id` を持つ。`db/repo.ts` の関数は、どれも事業所で絞る。ほかの事業所の利用者は 404 になる（`test/api.test.ts` で確かめている） |
-| 欄の値は fields.json の key で持つ | 用紙の印字欄（pdfme の欄）ではなく、意味の単位（`person.name`、`cert.careLevel` など）で持つ。印字欄との行き来（表示と直し）は、様式の対応（`forms/seed/<様式>/bindings.json`）を共通の仕組み（`core/binding.ts`）で動かす |
+| 欄の値は fields.json の key で持つ | 用紙の印字欄（pdfme の欄）ではなく、意味の単位（`person.name`、`cert.careLevel` など）で持つ。印字欄との行き来（表示と直し）は、書類が指す様式の版の対応（`bindings`）を共通の仕組み（`core/binding.ts`）で動かす |
+| 様式はデータ | 様式（`form_templates`）と様式の版（`form_template_versions`）を DB に持つ。版の中身（欄の位置・対応・ページ）は書き換えない・消さない（トリガーで止める）。直すときは新しい版を出し、書類の向き先を `npm run forms:rebase` で移す。書類は作ったときの版を指し、保存した版（`revisions`）と出した PDF（`exports`）にも、そのときの版を残す |
+| 様式のファイルは非公開の置き場 | 元の PDF とページの画像は、Cloud Storage の `forms` の置き場の `<様式の id>/v<版>/`（`base.pdf`・`pages/p1.png`…）。上書きしない。画面には期限つきの URL で渡す |
 | 印字欄ごとの値は持たない | どの印字欄も対応があり、直しは key の値になるか、理由を出して断る（例: 受付方法が「電話」なのに「その他」の中身を書いた）。年だけ・年月だけの日付は、日付の値のまま持つ |
 | 誰が書いたか | 欄ごとに `by`（`ai`／`cm`）を持つ。AI はケアマネの欄を書き換えない |
 | 保存は書類ごと | 今の値（`field_values`）と、その書類で保存した値（`document_saved`）を分けて持つ。画面の印（橙・黄・緑の下線）は、この 2 つの違いで出す |
@@ -23,17 +25,19 @@
 | `staff` | ケアマネ | `auth_uid`（Identity Platform の uid）、`name`、`email`、`role` |
 | `clients` | 利用者 | `name`、`status`（在宅／入院中／入所中）、`next_visit_at`（iPad の一覧の「次の訪問」） |
 | `people` | 話した人 | `label`（春子など）、`role`（本人・家族・専門職・ケアマネ・不明）、`relation`。次の録音でも同じ人にする |
-| `documents` | 書類 | `form`（`assessment`／`admission`）。1 利用者 1 様式 1 つ |
+| `form_templates` | 様式 | `kind`（`assessment`／`admission`）、`name`、`title`、`publisher`、`source_url`、`office_id`（NULL なら全事業所）。種類と使う範囲ごとに 1 つ。事業所の様式があれば、その事業所ではそれを使う |
+| `form_template_versions` | 様式の版 | `version`、`status`（draft → published → retired）、`schemas`（欄の位置）、`bindings`（対応）、`pages`、`content_sha`、`base_pdf_sha256`。使う版（published）は様式に 1 つ。中身は書き換えない・消さない |
+| `documents` | 書類 | `kind`（`assessment`／`admission`）、`template_version_id`（使う様式の版）。1 利用者 1 種類 1 つ |
 | `field_values` | 今の値（シート） | `key`、`value`、`ai_value`（最後に AI が書いた値）、`by`、`batch_id`、`cite`（根拠の発言の id）。一意: `(client_id, document_id, key)`（NULLS NOT DISTINCT） |
 | `field_history` | 前の値 | 書き換えるたびに追記 |
 | `document_saved` | 保存した値 | `(document_id, key)` ごとに `value`・`by` |
-| `revisions` | 版 | `rev`、`scope`（`hunk`／`page`／`document`）、`values`（保存した値の全部） |
+| `revisions` | 版 | `rev`、`scope`（`hunk`／`page`／`document`）、`values`（保存した値の全部）、`template_version_id`（PDF はこの様式の版から作る） |
 | `batches` | 書き込み | `kind`（`recording`／`copy`／`seed`）、`label`（「AI 書き込み 2・1/25 の録音」など）、`changes`（key・op・before・after）、`kept`（書き換えなかったケアマネの欄） |
 | `recordings` | 録音（原本の音声） | `object_path`（Cloud Storage の場所）、`mime`、`bytes`、`duration_ms`、`status` |
 | `transcripts` | 文字起こし（原本の文字） | `utterances`（id・時刻・話者の記号・人・文）、`speakers`、`model` |
 | `jobs` | 録音 1 本の処理 | `status`（queued／processing／succeeded／partial／failed）、`step`（transcribe／speakers／write／apply）、`steps`（段ごとの結果・時間・トークン・円）、`lease_until`、`batch_id`。録音 1 つに 1 つ、同じ書類で処理中は 1 つだけ |
-| `exports` | 出した PDF | `revision_rev`、`object_path` |
-| `audit_events` | 操作の記録（追記だけ） | `action`（client.create／document.edit／document.save／document.pdf／recording.start など）、`detail`（数だけ。欄の値や話の中身は入れない） |
+| `exports` | 出した PDF | `revision_rev`、`template_version_id`、`object_path` |
+| `audit_events` | 操作の記録（追記だけ） | `action`（client.create／document.edit／document.save／document.pdf／recording.start／form.rebase など）、`detail`（数だけ。欄の値や話の中身は入れない。form.rebase は移した版の番号と中身の指紋） |
 
 ## 保存の 3 段
 

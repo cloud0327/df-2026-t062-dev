@@ -1,0 +1,89 @@
+{
+ "_about": "様式の情報。npm run forms:seed が、この様式（全事業所用）の版として DB に入れる。欄の位置は template.json、対応は bindings.json",
+ "kind": "assessment",
+ "name": "アセスメント",
+ "title": "アセスメント用紙（全社協 居宅サービス計画ガイドライン ver.3）",
+ "publisher": "全国社会福祉協議会",
+ "sourceUrl": "https://www.shakyo.or.jp/download/careplanGL/assess.pdf",
+ "basePdfSha256": "9a8b35b1199bd205e46f2448463dc47001398411142c1d55d07478125a95e7e9",
+ "pages": [
+  {
+   "no": 1,
+   "pdfIndex": 1,
+   "title": "フェースシート",
+   "width": 210,
+   "height": 297
+  },
+  {
+   "no": 2,
+   "pdfIndex": 2,
+   "title": "家族状況・支援",
+   "width": 210,
+   "height": 297
+  },
+  {
+   "no": 3,
+   "pdfIndex": 3,
+   "title": "サービス利用・住居",
+   "width": 210,
+   "height": 297
+  },
+  {
+   "no": 4,
+   "pdfIndex": 4,
+   "title": "健康状態・受診",
+   "width": 210,
+   "height": 297
+  },
+  {
+   "no": 5,
+   "pdfIndex": 5,
+   "title": "6-① 基本動作",
+   "width": 210,
+   "height": 297
+  },
+  {
+   "no": 6,
+   "pdfIndex": 6,
+   "title": "6-② 生活機能",
+   "width": 210,
+   "height": 297
+  },
+  {
+   "no": 7,
+   "pdfIndex": 7,
+   "title": "6-③④ 認知・行動",
+   "width": 210,
+   "height": 297
+  },
+  {
+   "no": 8,
+   "pdfIndex": 8,
+   "title": "6-⑤ 社会生活",
+   "width": 210,
+   "height": 297
+  },
+  {
+   "no": 9,
+   "pdfIndex": 9,
+   "title": "6-⑥ 医療・健康",
+   "width": 210,
+   "height": 297
+  },
+  {
+   "no": 10,
+   "pdfIndex": 10,
+   "title": "7 全体のまとめ",
+   "width": 210,
+   "height": 297
+  },
+  {
+   "no": 11,
+   "pdfIndex": 11,
+   "title": "1 日のスケジュール",
+   "width": 210,
+   "height": 297
+  }
+ ],
+ "_pagesNote": "PDF の 1 ページ目は表紙なので、画面のページは PDF の 2 ページ目から"
+}

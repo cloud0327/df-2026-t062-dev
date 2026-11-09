@@ -1,49 +1,37 @@
 // 保存した版から、様式の PDF を作る（pdfme）。AI が書いただけで保存していない値は出ない。
+// 元の PDF は、その書類の版の様式のもの（非公開の置き場 forms の <様式の id>/v<版>/base.pdf。npm run forms:assets が入れる）。
 import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
-import { FORMS, type FormId } from '../forms/index.ts'
-import { renderSlots } from '../core/slots.ts'
+import { renderAll } from '../core/binding.ts'
+import { basePdfPath, type FormVersion } from '../db/forms.ts'
+import type { Storage } from './storage.ts'
 
-/** 様式の元の PDF がない（公開リポジトリには入れていない。forms/scripts/fetch.mjs） */
+/** 様式の元の PDF が、まだ置き場にない（npm run forms:assets） */
 export class FormUnavailable extends Error {}
 
-// アセスメントは全社協が公開している PDF。手元になければ公式の URL から取る（中身はハッシュで確かめる）
-const OFFICIAL: Partial<Record<FormId, { url: string, sha256: string }>> = {
-  assessment: { url: 'https://www.shakyo.or.jp/download/careplanGL/assess.pdf', sha256: '9a8b35b1199bd205e46f2448463dc47001398411142c1d55d07478125a95e7e9' },
-}
-
-async function loadBase(formId: FormId, file: URL): Promise<Uint8Array<ArrayBuffer>> {
-  try {
-    const b = await readFile(file)
-    return new Uint8Array(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer)
-  } catch {
-    const o = OFFICIAL[formId]
-    if (!o) throw new FormUnavailable(formId)
-    const res = await fetch(o.url)
-    const buf = new Uint8Array(await res.arrayBuffer())
-    if (!res.ok || createHash('sha256').update(buf).digest('hex') !== o.sha256) throw new FormUnavailable(formId)
-    return buf
-  }
-}
-
-const ROOT = new URL('../forms/', import.meta.url)
+const FONT = new URL('../forms/fonts/BIZUDPGothic-Regular.ttf', import.meta.url)
 let font: Promise<Uint8Array<ArrayBuffer>> | undefined
-const bases = new Map<FormId, Promise<Uint8Array<ArrayBuffer>>>()
+const bases = new Map<string, Promise<Uint8Array<ArrayBuffer>>>()
+const own = (b: Uint8Array) => new Uint8Array(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer)
 
-export async function makePdf(formId: FormId, values: Record<string, unknown>): Promise<Uint8Array<ArrayBuffer>> {
+async function loadBase(storage: Storage, v: FormVersion): Promise<Uint8Array<ArrayBuffer>> {
+  const buf = await storage.read('forms', basePdfPath(v)).catch(() => null)
+  if (!buf || createHash('sha256').update(buf).digest('hex') !== v.basePdfSha256) throw new FormUnavailable(v.id)
+  return own(buf)
+}
+
+export async function makePdf(storage: Storage, v: FormVersion, values: Record<string, unknown>): Promise<Uint8Array<ArrayBuffer>> {
   const [{ generate }, { text, circleMark }] = await Promise.all([import('@pdfme/generator'), import('@pdfme/schemas')])
-  const form = FORMS[formId]
-  font ??= readFile(new URL('fonts/BIZUDPGothic-Regular.ttf', ROOT)).then((b) => new Uint8Array(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer))
-  if (!bases.has(formId)) {
-    const p = loadBase(formId, new URL(`templates/${formId}/${form.template.basePdf}`, ROOT))
-    p.catch(() => bases.delete(formId))
-    bases.set(formId, p)
+  font ??= readFile(FONT).then(own)
+  if (!bases.has(v.id)) {
+    const p = loadBase(storage, v)
+    p.catch(() => bases.delete(v.id))
+    bases.set(v.id, p)
   }
-  const template = { ...form.template, basePdf: await bases.get(formId)! }
-  const inputs = renderSlots(form, values)
+  const template = { basePdf: await bases.get(v.id)!, schemas: v.schemas }
   const pdf = await generate({
     template: template as never,
-    inputs: [inputs],
+    inputs: [renderAll(v.bindings, values)],
     plugins: { text, circleMark } as never,
     options: { font: { BIZUDPGothic: { data: await font, fallback: true, subset: true } } },
   })

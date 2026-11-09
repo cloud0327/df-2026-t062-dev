@@ -45,17 +45,73 @@ CREATE TABLE people (
   UNIQUE (client_id, label)
 );
 
+-- 様式（全社協のアセスメント用紙、地域の入院時情報提供書など）。office_id が NULL なら全事業所で使う。
+-- 種類（kind）と使う範囲ごとに 1 つ。事業所の様式があれば、その事業所ではそれを使う
+CREATE TABLE form_templates (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  kind text NOT NULL CHECK (kind IN ('assessment', 'admission')),
+  name text NOT NULL,
+  title text NOT NULL,
+  publisher text,
+  source_url text,
+  office_id uuid REFERENCES offices(id),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT form_templates_scope UNIQUE NULLS NOT DISTINCT (kind, office_id)
+);
+
+-- 様式の版。中身（欄の位置・対応・ページ）は書き換えない・消さない（直すときは新しい版）。
+-- 使う版（published）は様式に 1 つ。元の PDF とページの画像は、非公開の置き場の <様式の id>/v<版>/ に置く
+CREATE TABLE form_template_versions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  template_id uuid NOT NULL REFERENCES form_templates(id),
+  version integer NOT NULL CHECK (version > 0),
+  status text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published', 'retired')),
+  -- pdfme の欄の位置（ページごと）
+  schemas jsonb NOT NULL,
+  -- 印字欄 → 欄の値の対応（core/binding.ts）
+  bindings jsonb NOT NULL,
+  -- [{no, pdfIndex, title, width, height}]
+  pages jsonb NOT NULL,
+  content_sha text NOT NULL,
+  base_pdf_sha256 text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  published_at timestamptz,
+  retired_at timestamptz,
+  UNIQUE (template_id, version)
+);
+CREATE UNIQUE INDEX form_versions_one_published ON form_template_versions (template_id) WHERE status = 'published';
+
+CREATE FUNCTION form_versions_guard() RETURNS trigger AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION '様式の版は消せません';
+  END IF;
+  IF NEW.template_id <> OLD.template_id OR NEW.version <> OLD.version
+     OR NEW.schemas IS DISTINCT FROM OLD.schemas OR NEW.bindings IS DISTINCT FROM OLD.bindings OR NEW.pages IS DISTINCT FROM OLD.pages
+     OR NEW.content_sha <> OLD.content_sha OR NEW.base_pdf_sha256 <> OLD.base_pdf_sha256 THEN
+    RAISE EXCEPTION '様式の版の中身は書き換えられません。新しい版を作ってください';
+  END IF;
+  IF NOT (NEW.status = OLD.status OR (OLD.status = 'draft' AND NEW.status = 'published') OR (OLD.status = 'published' AND NEW.status = 'retired')) THEN
+    RAISE EXCEPTION '様式の版の状態は draft → published → retired の順にしか変えられません';
+  END IF;
+  RETURN NEW;
+END
+$$ LANGUAGE plpgsql;
+CREATE TRIGGER form_versions_guard BEFORE UPDATE OR DELETE ON form_template_versions FOR EACH ROW EXECUTE FUNCTION form_versions_guard();
+
 CREATE TABLE documents (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   office_id uuid NOT NULL REFERENCES offices(id),
   client_id uuid NOT NULL REFERENCES clients(id),
-  form text NOT NULL CHECK (form IN ('assessment', 'admission')),
+  kind text NOT NULL CHECK (kind IN ('assessment', 'admission')),
+  -- 書類が使う様式の版（作ったときに決める。版を移すのは npm run forms:rebase だけ）
+  template_version_id uuid NOT NULL REFERENCES form_template_versions(id),
   -- AI の書き込みを反映している間だけ用紙を止める（数秒）
   locked_until timestamptz,
   created_by uuid REFERENCES staff(id),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (client_id, form)
+  UNIQUE (client_id, kind)
 );
 
 CREATE TABLE jobs (
@@ -146,6 +202,8 @@ CREATE TABLE revisions (
   document_id uuid NOT NULL REFERENCES documents(id),
   rev integer NOT NULL,
   scope text NOT NULL CHECK (scope IN ('hunk', 'page', 'document')),
+  -- 保存したときの様式の版（PDF はこの版から作る）
+  template_version_id uuid NOT NULL REFERENCES form_template_versions(id),
   "values" jsonb NOT NULL,
   saved_by uuid REFERENCES staff(id),
   saved_at timestamptz NOT NULL DEFAULT now(),
@@ -183,6 +241,7 @@ CREATE TABLE exports (
   office_id uuid NOT NULL REFERENCES offices(id),
   document_id uuid NOT NULL REFERENCES documents(id),
   revision_rev integer,
+  template_version_id uuid REFERENCES form_template_versions(id),
   object_path text,
   created_by uuid REFERENCES staff(id),
   created_at timestamptz NOT NULL DEFAULT now()

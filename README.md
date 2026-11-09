@@ -35,7 +35,7 @@ Cloud Scheduler（5 分ごと）──▶ worker の見回り
 | `api/` | api（Hono）。ログインの確かめ、置き場（Cloud Storage／ローカル）、ジョブの積み方（Cloud Tasks／同じプロセス）、PDF |
 | `worker/` | 録音 1 本の処理。`vertex/` が本物の AI（STT・Gemini・2 層改）、`fake.ts` が費用のかからない見せかけ |
 | `core/` | 画面・api・worker で共通のもの。`fields.json`（欄の一覧の本体）、型の確かめ、印字欄と欄の値の変換、文ごとの差分、書き換えの決まり |
-| `forms/` | pdfme の様式（アセスメント・入院時情報提供書）。`seed/<様式>/bindings.json` が「印字欄 → 欄の値」の対応（変換は `core/binding.ts` の共通の仕組み） |
+| `forms/` | 様式のデータと道具。`seed/<様式>/`（様式の情報・欄の位置・印字欄 → 欄の値の対応）を `admin/`（`forms:seed`・`forms:assets`・`forms:rebase`・`forms:check`）が DB と置き場に入れる。`tools/` は様式を作る道具 |
 | `db/` | PostgreSQL の移行、読み書き（`repo.ts`）、見本のデータ |
 | `eval/` | 演習シナリオ（公開）と採点（bench）。`run-writer.ts` で 2 層改をシナリオに通す |
 | `docs/` | 設計書（[DB 設計](docs/DB設計.md)、[API 設計](docs/API設計.md)、[AI 基盤の設計](docs/AI基盤の設計.md)、[データの定義](docs/データの定義.md)、[欄の一覧](docs/欄の一覧.md)） |
@@ -49,8 +49,8 @@ Node.js は `.nvmrc` の版を使います。最初に `npm ci` を実行しま�
 docker compose up -d                       # PostgreSQL（localhost:54329）
 export DATABASE_URL=postgres://postgres:postgres@localhost:54329/careman
 npm run db:migrate                         # 表を作る
-npm run db:seed                            # 見本のデータ（架空の人と、公開の演習シナリオ）
-npm run forms:fetch                        # 様式の PDF を全社協の公式の URL から取り、画面の画像を作る（pdftoppm が要る）
+npm run db:seed                            # 様式（forms/seed）を登録し、見本のデータを入れる（架空の人と、公開の演習シナリオ）
+npm run forms:assets                       # 様式の元の PDF（全社協の公式の URL から取る）とページの画像を、置き場（.data/storage/forms）に入れる（pdftoppm が要る）
 
 AUTH_MODE=dev npm run dev:api              # ターミナル 1: api（http://127.0.0.1:8787）
 npm run dev                                # ターミナル 2: 画面（Vite）
@@ -81,13 +81,13 @@ GOOGLE_CLOUD_PROJECT=<プロジェクト> AI_PROVIDER=vertex npm run dev:api
 
 ```sh
 npm run typecheck
-npm run forms:check        # 様式（template.json）・対応（bindings.json）・fields.json の食い違い
+npm run forms:check        # 様式の版を出す前の確かめ（欄の位置・対応・fields.json の食い違い）
 npm test                   # DATABASE_URL があれば DB を使うテストも走る
 python3 -m unittest discover -s eval/bench
 npm run build
 ```
 
-印字欄を足した・名前を変えたときは、`forms/seed/<様式>/bindings.json` に対応を書きます（書き方は [docs/データの定義.md](docs/データの定義.md) の「印字欄の対応」）。
+様式は DB の版つきのデータです（[DB 設計](docs/DB設計.md)）。`forms/seed/<様式>/` を直したら、`npm run forms:check` で確かめてから `npm run forms:seed` で新しい版を登録し、`npm run forms:assets` で PDF と画像を置き場に入れ、`npm run forms:rebase` で書類の向き先を移します（新しい版が古い版の読んでいた key を全部読むときだけ移します）。対応の書き方は [docs/データの定義.md](docs/データの定義.md) の「印字欄の対応」。
 
 ## 環境変数
 
@@ -98,6 +98,8 @@ npm run build
 | `AUTH_MODE` | api | `firebase`（既定）／`dev`（ローカルだけ） |
 | `FIREBASE_PROJECT_ID` | api | ID トークンを確かめるプロジェクト |
 | `STORAGE_MODE`・`GCS_SOURCE_BUCKET`・`GCS_OUTPUT_BUCKET`・`GCS_WORK_BUCKET` | api・worker | `gcs` で Cloud Storage。既定はローカル |
+| `GCS_FORMS_BUCKET` | api・`forms:assets` | 様式の元の PDF とページの画像の置き場（非公開。画面には期限つきの URL） |
+| `LOCAL_SIGNING_SECRET` | api（ローカル） | ローカルの期限つきの URL の署名の鍵。なければ起動のたびに作る |
 | `QUEUE_MODE`・`TASKS_QUEUE`・`WORKER_URL`・`TASKS_INVOKER_SA` | api | `tasks` で Cloud Tasks。既定は同じプロセス |
 | `AI_PROVIDER`・`GOOGLE_CLOUD_PROJECT`・`GEMINI_MODEL`・`GEMINI_LOCATION`・`STT_LOCATION` | worker | `vertex` で本物の AI。既定は `fake` |
 
@@ -112,7 +114,7 @@ PR と `main` で、型チェック、様式の確かめ、テスト（PostgreSQ
 
 ## 様式の PDF について
 
-様式の元の PDF と、そこから作ったページの画像・座標データは、利用条件のため公開リポジトリに入れていません。アセスメント用紙は `npm run forms:fetch` で全社協の公式の URL から取ってきます（くわしくは [forms/README.md](forms/README.md)）。画像がないときは、白い紙の上に欄だけが出ます。公開のデモで用紙の画像を配る前に、全社協に利用の許可を確かめます。
+様式の元の PDF と、そこから作ったページの画像・座標データは、利用条件のため公開リポジトリに入れていません。サービスでは非公開の置き場（Cloud Storage の `forms`）に置き、画面には期限つきの URL で渡します。アセスメント用紙は `npm run forms:assets` が全社協の公式の URL から取ってきます（中身はハッシュで確かめます）。画像がないときは、白い紙の上に欄だけが出ます。公開のデモで用紙の画像を配る前に、全社協に利用の許可を確かめます。
 
 ## 個人情報の扱い
 

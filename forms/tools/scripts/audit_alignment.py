@@ -64,7 +64,7 @@ def inserted_lines(pdf_page, ox=0):
 def main(form):
     label = LABELS[form]
     tdir = ROOT / "templates" / form
-    template = json.loads((tdir / "template.json").read_text())
+    template = json.loads((ROOT.parent / "seed" / form / "template.json").read_text())
     layout = json.loads((tdir / "layout.json").read_text())
     sample_pdf = ROOT / "out" / f"{label}_見本.pdf"
     layout_pdf = ROOT / "out" / f"{label}_位置確認.pdf"

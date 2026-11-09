@@ -13,7 +13,7 @@ export function PadWork({ clientId }: { clientId: string }) {
   const [tab, setTab] = useState<'assessment' | 'admission'>('assessment')
   const reloadDoc = useRef<() => void>(() => {})
   const { client, jobs, reload: reloadClient, poll } = useClient(clientId, () => reloadDoc.current())
-  const docId = client?.documents.find((d) => d.form === tab)?.id
+  const docId = client?.documents.find((d) => d.kind === tab)?.id
   const state = useDocument(docId)
   reloadDoc.current = () => { void state.reload(); void reloadClient() }
   const recorder = useRecorder(clientId, () => void poll())
@@ -44,7 +44,7 @@ export function PadWork({ clientId }: { clientId: string }) {
   const openDoc = async (form: 'assessment' | 'admission') => {
     setDocOpen(false)
     setTocOpen(false)
-    if (form === 'admission' && !client?.documents.some((d) => d.form === 'admission')) {
+    if (form === 'admission' && !client?.documents.some((d) => d.kind === 'admission')) {
       await api.createAdmission(clientId)
       await reloadClient()
     }
