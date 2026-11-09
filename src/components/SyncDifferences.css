@@ -1,0 +1,25 @@
+.sync-differences { margin: 0 auto 14px; max-width: 100%; border: 1px solid #e4ba72; border-radius: 12px; background: #fff; box-shadow: 0 4px 18px #29344212; overflow: hidden; font-family: 'Noto Sans JP', system-ui, sans-serif; color: #222b39; }
+.sync-differences-toggle { display: flex; align-items: center; gap: 12px; width: 100%; padding: 13px 16px; background: #fff7ea; border: 0; color: inherit; cursor: pointer; text-align: left; font: inherit; }
+.sync-differences-toggle strong { display: block; font-size: 15px; }
+.sync-differences-toggle small { display: block; color: #635c51; font-size: 12px; }
+.sync-differences-icon { display: grid; place-items: center; flex: 0 0 30px; height: 30px; border-radius: 9px; background: #ae5b0b; color: #fff; font-size: 20px; }
+.sync-differences-chevron { margin-left: auto; white-space: nowrap; color: #86500c; font-size: 12px; }
+.sync-differences-body { padding: 14px 16px 16px; }
+.sync-differences-help { margin: 0 0 12px; color: #5d6572; font-size: 12px; line-height: 1.6; }
+.sync-differences-warning, .sync-differences-error { padding: 8px 10px; border-radius: 7px; background: #fff3db; color: #845000; font-size: 12px; }
+.sync-differences-error { background: #fff0ee; color: #a3261c; }
+.sync-differences-row { padding: 14px 0; border-top: 1px solid #e9ebef; }
+.sync-differences-heading, .sync-differences-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.sync-differences-heading h3 { margin: 0; font-size: 14px; }
+.sync-differences-status { padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 700; }
+.sync-differences-review { color: #8b4c08; background: #fff0d5; }
+.sync-differences-pending { color: #5b6672; background: #edf0f3; }
+.sync-differences-different { color: #23549b; background: #e7f0ff; }
+.sync-differences-values { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 10px 0; }
+.sync-differences-values > div { min-width: 0; padding: 10px; border: 1px solid #e0e5ec; border-radius: 8px; background: #fafbfc; }
+.sync-differences-values b { font-size: 11px; color: #5b6672; }
+.sync-differences-values pre { margin: 4px 0 0; font: inherit; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 150px; overflow: auto; }
+.sync-differences-actions button { min-height: 36px; padding: 6px 12px; border-radius: 7px; border: 1px solid #a85b0d; background: #a85b0d; color: #fff; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; }
+.sync-differences-actions button + button { background: #fff; color: #6e4d24; border-color: #d8b98d; }
+.sync-differences-actions button:disabled { opacity: .45; cursor: default; }
+@media (max-width: 620px) { .sync-differences-values { grid-template-columns: 1fr; } }

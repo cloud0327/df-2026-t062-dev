@@ -15,6 +15,8 @@
 | `GET /api/form-versions/:id` | 様式の版（欄の位置・対応・ページ）。その事業所が見てよい版だけ（ほかは 404）。中身は変わらないので `ETag`・`Cache-Control: private, immutable`（`If-None-Match` で 304） | `{formVersion}` |
 | `GET /api/form-versions/:id/assets` | ページの画像の期限つきの URL（UTC の 0 時から 48 時間。同じ日は同じ URL）と、元の PDF が置き場にあるか。画像がまだなければ `url: null` | `{pages:[{no, url}], hasPdf, expiresAt}` |
 | `GET /api/documents/:id` | 欄の今の値・保存した値・版の番号・最近の書き込み・使う様式の版 | `{document}`（`kind`、`formVersionId`） |
+| `GET /api/documents/:id/sync-differences` | 入院時情報提供書と元のアセスメントの独立した欄を比較。`review` は元の保存済み値が前回の確認から変わった欄、`pending` は元の変更が未保存、`different` は元書類に新たな変更がない差異 | `{differences:[{key,label,source,target,status}]}` |
+| `POST /api/documents/:id/sync-decisions` | 差異を欄ごとに「反映」または「今の記載を維持」。`{key,decision:"apply"\|"keep",source,target}` の両方が現在値と違えば 409。元の変更が未保存でも 409 | `{differences,document}` |
 | `POST /api/documents/:id/edits` | 用紙の印字欄の直し（`{formVersionId, edits:[{slot, text}]}`）。書類の行を止め、その時点の値に、様式の版の対応で 1 つずつ当てる。当てられない直しは理由を返す（ほかは当てる）。画面の様式の版が書類の版と違えば 409 | `{results:[{slot, reason?}], syncedTo, document}` |
 | `PATCH /api/documents/:id/fields` | 欄の値をそのまま変える直し（差分の欄の文章。`{changes:[{key, value, base, mode?}]}`）。`base` は画面が元にした値で、今の値と違えば 409（AI が書いたばかりの値を上書きしない）。`mode:"revert"` は「前の文に戻す」 | `{syncedTo, document}`（基本情報を直したら、ほかの書類の名前が `syncedTo` に入る） |
 | `POST /api/documents/:id/save` | 保存（`{scope:"document"}`／`{scope:"page", page}`／`{scope:"hunk", key, hunkIndex}`） | `{rev, document}` |

@@ -1,8 +1,8 @@
 // api の呼び出し。ログインのトークンを付ける。型は db/repo.ts と同じ形。
-import type { ClientSummary, DocumentView, JobView, SlotEdit, SlotEditResult, Staff } from '../../db/repo.ts'
+import type { ClientSummary, DocumentView, JobView, SlotEdit, SlotEditResult, Staff, SyncDifference } from '../../db/repo.ts'
 import type { FormAssetsView, FormKind, FormVersionView } from '../../core/form.ts'
 
-export type { ClientSummary, DocumentView, JobView, SlotEdit, SlotEditResult, Staff }
+export type { ClientSummary, DocumentView, JobView, SlotEdit, SlotEditResult, Staff, SyncDifference }
 
 export interface ClientDetail {
   id: string
@@ -61,6 +61,9 @@ export const api = {
   client: (id: string) => req<{ client: ClientDetail, jobs: JobView[] }>('GET', `/api/clients/${id}`),
   createAdmission: (clientId: string) => req<{ id: string }>('POST', `/api/clients/${clientId}/documents`, { form: 'admission' }),
   document: (id: string) => req<{ document: DocumentView }>('GET', `/api/documents/${id}`),
+  syncDifferences: (id: string) => req<{ differences: SyncDifference[] }>('GET', `/api/documents/${id}/sync-differences`),
+  decideSync: (id: string, input: { key: string, decision: 'apply' | 'keep', source: unknown, target: unknown }) =>
+    req<{ differences: SyncDifference[], document: DocumentView }>('POST', `/api/documents/${id}/sync-decisions`, input),
   patch: (id: string, changes: { key: string, value: unknown, base: unknown, mode?: 'edit' | 'revert' }[]) =>
     req<{ syncedTo: string[], document: DocumentView }>('PATCH', `/api/documents/${id}/fields`, { changes }),
   edits: (id: string, formVersionId: string, edits: SlotEdit[]) =>

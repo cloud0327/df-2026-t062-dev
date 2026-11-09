@@ -30,6 +30,7 @@ const SaveInput = z.discriminatedUnion('scope', [
   z.object({ scope: z.literal('page'), page: z.number().int().min(1).max(20) }),
   z.object({ scope: z.literal('hunk'), key: z.string().min(1), hunkIndex: z.number().int().min(0) }),
 ])
+const SyncDecisionInput = z.object({ key: z.string().min(1).max(200), decision: z.enum(['apply', 'keep']), source: z.unknown(), target: z.unknown() })
 const RecordingInput = z.object({ mime: z.string().min(1).max(100) })
 const CompleteInput = z.object({ durationMs: z.number().int().min(0).nullish() })
 
@@ -124,6 +125,14 @@ export function createApp(deps: ApiDeps) {
   }))
 
   app.get('/api/documents/:id', authed(async (c, staff, db) => json(c, { document: await repo.getDocument(db, staff.officeId, c.req.param('id')!) })))
+
+  app.get('/api/documents/:id/sync-differences', authed(async (c, staff, db) =>
+    json(c, { differences: await repo.getSyncDifferences(db, staff.officeId, c.req.param('id')!) })))
+
+  app.post('/api/documents/:id/sync-decisions', authed(async (c, staff, db) => {
+    await repo.decideSyncDifference(db, staff, c.req.param('id')!, await body(c, SyncDecisionInput))
+    return json(c, { differences: await repo.getSyncDifferences(db, staff.officeId, c.req.param('id')!), document: await repo.getDocument(db, staff.officeId, c.req.param('id')!) })
+  }))
 
   // 欄の値をそのまま変える直し（差分の欄の文章）。画面が元にした値（base）が今の値と違えば 409
   app.patch('/api/documents/:id/fields', authed(async (c, staff, db) => {
