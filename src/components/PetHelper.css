@@ -102,28 +102,21 @@ button.assistant-card:hover, .assistant-header button:hover { border-color: #bda
 .assistant-file-card[data-selected=true] { border-color: #8abd9c; background: #f3fbf6; }
 .assistant-file-card strong { margin-bottom: 3px; }
 .assistant-icon-tile { display: grid; place-items: center; width: 48px; height: 53px; border-radius: 15px; background: #f3effe; }
-.assistant-file-selection { font-size: 14px; line-height: 1.45; block-size: 3lh; margin-top: 6px; }
-.assistant-file-card .assistant-file-status { display: flex; align-items: center; gap: 5px; color: #17633a; font-weight: 800; }
-.assistant-file-card .assistant-filename {
-  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
-  overflow: hidden; overflow-wrap: anywhere; color: var(--pet-ink);
-}
+.assistant-file-card .assistant-file-status { display: flex; align-items: center; gap: 5px; margin-top: 6px; color: #17633a; font-weight: 800; }
+.assistant-filename { overflow-wrap: anywhere; color: var(--pet-ink); }
 .assistant-file-actions { display: grid; gap: 2px; text-align: center; }
 .assistant-file-actions .assistant-file-clear {
   min-height: 32px; border: 0; background: transparent; border-radius: 5px;
   color: #4d12bc; font-size: 12px; text-decoration: underline;
 }
-.assistant-file-clear:disabled { visibility: hidden; }
 .assistant-file-picker { position: relative; display: grid; gap: 2px; text-align: center; }
 .assistant-file-picker input { position: absolute; width: 100%; height: 100%; inset: 0; opacity: 0; cursor: pointer; }
 .assistant-file-picker input:disabled { cursor: default; }
-.assistant-file-picker > span {
-  grid-area: 1 / 1;
+.assistant-file-picker span:not(.assistant-icon) {
   display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 7px 10px;
   min-height: 34px; box-sizing: border-box; border: 1px solid #b9a1e8; border-radius: 9px;
   color: #4d12bc; background: #faf7ff; font-size: 13px; font-weight: 800;
 }
-.assistant-file-picker-size { visibility: hidden; }
 .assistant-file-picker input:focus-visible + span { outline: 2px solid var(--pet-purple); outline-offset: 2px; }
 .assistant-file-picker input:disabled + span { color: #665d76; border-color: #dbd3e6; }
 .assistant-import-notes { margin: 23px 2px 27px; padding: 17px 17px; border-radius: 13px; border: 1px solid var(--pet-line); background: #f3effc; }
@@ -177,7 +170,7 @@ button.assistant-card:hover, .assistant-header button:hover { border-color: #bda
   .assistant-review-card strong { font-size: 14px; }
   .assistant-file-card strong { font-size: 15px; }
   .assistant-icon-tile { width: 30px; font-size: 21px; }
-  .assistant-file-picker > span { font-size: 11px; padding-inline: 5px; }
+  .assistant-file-picker span:not(.assistant-icon) { font-size: 11px; padding-inline: 5px; }
 }
 @media (prefers-reduced-motion: reduce) { .assistant-spinner { animation: none; } }
 
