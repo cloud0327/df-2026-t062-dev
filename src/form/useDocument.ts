@@ -6,6 +6,7 @@
 //   - 印は「保存した値」と「今の値」の違いで出す（橙＝AI、黄＝ケアマネ）
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getRef, parseYear, specOf, type Binding, type EraShort } from '../../core/binding.ts'
+import { sameValue } from '../../core/apply-batch.ts'
 import { sentenceDiff } from '../../core/diff.ts'
 import { slotPages, toFormDef, type FormAssetsView, type FormDef } from '../../core/form.ts'
 import { applyChanges, editSlot, renderSlots, slotMarks, type Values, type Who } from '../../core/slots.ts'
@@ -13,6 +14,18 @@ import { api, ApiError, type DocumentView, type SlotEdit } from '../lib/api.ts'
 import { pagesOf, type SlotView } from './layout.ts'
 
 interface FieldPending { value: unknown, base: unknown, mode?: 'edit' | 'revert' }
+interface PendingSlot extends SlotEdit { form: FormDef }
+interface PendingEdits {
+  slots: PendingSlot[]
+  fields: Map<string, FieldPending>
+  conflicts: Map<string, FieldPending>
+  timer?: ReturnType<typeof setTimeout>
+  inflight?: Promise<boolean>
+}
+
+function newPending(): PendingEdits {
+  return { slots: [], fields: new Map(), conflicts: new Map() }
+}
 
 export interface PageCount { ai: number, hand: number }
 
@@ -39,11 +52,20 @@ const docValues = (doc: DocumentView): Values => Object.fromEntries(Object.entri
 const toHalf = (t: string) => t.replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).trim()
 
 export function useDocument(docId: string | undefined) {
-  const [doc, setDoc] = useState<DocumentView | null>(null)
-  const [form, setForm] = useState<FormDef | null>(null)
+  const [loadedDoc, setDoc] = useState<DocumentView | null>(null)
+  const [loadedForm, setForm] = useState<FormDef | null>(null)
+  const doc = loadedDoc?.id === docId ? loadedDoc : null
+  const form = loadedForm?.id === doc?.formVersionId ? loadedForm : null
   const [assets, setAssets] = useState<FormAssetsView | null>(null)
-  const [slotQueue, setSlotQueue] = useState<SlotEdit[]>([])
-  const [fieldQueue, setFieldQueue] = useState<Map<string, FieldPending>>(new Map())
+  // The queue changes synchronously so a retry never reads a stale React render.
+  const [queues] = useState(() => new Map<string | undefined, PendingEdits>())
+  const pending = useMemo(() => {
+    const queue = queues.get(docId) ?? newPending()
+    queues.set(docId, queue)
+    return queue
+  }, [docId, queues])
+  const [, redraw] = useState(0)
+  const { slots: slotQueue, fields: fieldQueue, conflicts } = pending
   const [drafts, setDrafts] = useState<Map<string, string>>(new Map())
   const [eraDrafts, setEraDrafts] = useState<Map<string, EraShort>>(new Map())
   const [reasons, setReasons] = useState<Map<string, string>>(new Map())
@@ -52,11 +74,16 @@ export function useDocument(docId: string | undefined) {
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  const inflight = useRef<Promise<void> | null>(null)
   const retried = useRef(false)
-  const refs = useRef({ doc, form, slotQueue, fieldQueue })
-  refs.current = { doc, form, slotQueue, fieldQueue }
+  const active = useRef(docId)
+  active.current = docId
+  const refs = useRef<{ doc: DocumentView | null, form: FormDef | null }>({ doc: null, form: null })
+
+  const publish = useCallback((document: DocumentView) => {
+    if (active.current !== document.id) return
+    refs.current.doc = document
+    setDoc(document)
+  }, [])
 
   const showNotice = useCallback((text: string) => {
     setNotice(text)
@@ -65,29 +92,35 @@ export function useDocument(docId: string | undefined) {
   }, [])
 
   const loadAssets = useCallback(async (versionId: string) => {
-    setAssets(await api.formAssets(versionId).catch(() => null))
+    const result = await api.formAssets(versionId).catch(() => null)
+    if (refs.current.doc?.id === active.current && refs.current.form?.id === versionId) setAssets(result)
   }, [])
 
   const load = useCallback(async () => {
     if (!docId) return
     try {
-      const r = await api.document(docId)
-      setDoc(r.document)
-      if (refs.current.form?.id !== r.document.formVersionId) {
-        const v = await api.formVersion(r.document.formVersionId)
-        setForm(toFormDef(v))
-        retried.current = false
-        void loadAssets(v.id)
+      const { document } = await api.document(docId)
+      publish(document)
+      if (active.current === docId && refs.current.form?.id !== document.formVersionId) {
+        const v = await api.formVersion(document.formVersionId)
+        if (active.current === docId && refs.current.doc?.formVersionId === v.id) {
+          const def = toFormDef(v)
+          refs.current.form = def
+          setForm(def)
+          setAssets(null)
+          retried.current = false
+          void loadAssets(v.id)
+        }
       }
+      return document
     } catch (e) {
-      setError(String((e as Error).message))
+      if (active.current === docId) setError(String((e as Error).message))
     }
-  }, [docId, loadAssets])
+  }, [docId, loadAssets, publish])
 
   useEffect(() => {
     setDoc(null)
-    setSlotQueue([])
-    setFieldQueue(new Map())
+    setError('')
     setDrafts(new Map())
     setEraDrafts(new Map())
     setReasons(new Map())
@@ -123,82 +156,121 @@ export function useDocument(docId: string | undefined) {
   const marks = useMemo(() => (form ? slotMarks(form, current, saved, byOf) : new Map<string, Who>()), [form, current, saved, byOf])
 
   // ---------- 送る ----------
-  /** 送っていない直しを送る。送れた（送るものがなかった）ら true。送れなかった・409 で捨てたら false */
   const flush = useCallback(async (): Promise<boolean> => {
     if (!docId) return false
-    if (timer.current) { clearTimeout(timer.current); timer.current = undefined }
-    while (inflight.current) await inflight.current
-    const { form: f } = refs.current
-    const fields = [...refs.current.fieldQueue]
-    const edits = [...refs.current.slotQueue]
-    if (!fields.length && !edits.length) return true
-    const run = (async (): Promise<boolean> => {
+    if (pending.timer) { clearTimeout(pending.timer); pending.timer = undefined }
+    while (pending.inflight) await pending.inflight
+    const run = (async () => {
+      const synced: string[] = []
       try {
-        const synced: string[] = []
-        if (fields.length) {
-          const r = await api.patch(docId, fields.map(([key, p]) => ({ key, value: p.value ?? null, base: p.base ?? null, mode: p.mode })))
-          setDoc(r.document)
-          synced.push(...r.syncedTo)
-          // 送っている間に打った直しは残す
-          setFieldQueue((prev) => {
-            const next = new Map(prev)
-            for (const [k, p] of fields) if (next.get(k) === p) next.delete(k)
-            return next
-          })
+        let fields = [...pending.fields]
+        while (fields.length) {
+          try {
+            const r = await api.patch(docId, fields.map(([key, p]) => ({ key, value: p.value ?? null, base: p.base ?? null, mode: p.mode })))
+            publish(r.document)
+            synced.push(...r.syncedTo)
+            const next = new Map(pending.fields)
+            for (const [key, sent] of fields) {
+              const queued = next.get(key)
+              if (queued === sent) next.delete(key)
+              // Typing during the request still uses the base from before that request.
+              else if (queued && sameValue(queued.base, sent.base)) {
+                next.set(key, { ...queued, base: r.document.fields[key]?.value ?? null })
+              }
+            }
+            pending.fields = next
+            redraw((n) => n + 1)
+            break
+          } catch (e) {
+            if (!(e instanceof ApiError) || e.status !== 409) throw e
+            const latest = await load()
+            if (!latest) return false
+            const next = new Map(pending.fields)
+            const conflicts = new Map(pending.conflicts)
+            const retry: typeof fields = []
+            for (const [key, sent] of fields) {
+              const queued = next.get(key)
+              if (!queued || !sameValue(queued.base, sent.base)) continue
+              const serverValue = latest.fields[key]?.value ?? null
+              if (sameValue(serverValue, queued.base)) retry.push([key, queued])
+              else {
+                conflicts.set(key, queued)
+                next.delete(key)
+              }
+            }
+            // A retry must shrink the rejected batch. An unexplained 409 keeps all input.
+            if (retry.length === fields.length) throw e
+            pending.fields = next
+            pending.conflicts = conflicts
+            redraw((n) => n + 1)
+            fields = retry
+          }
         }
-        if (edits.length && f) {
-          const r = await api.edits(docId, f.id, edits)
-          setDoc(r.document)
-          synced.push(...r.syncedTo)
-          setSlotQueue((prev) => {
-            let i = 0
-            while (i < edits.length && prev[i] === edits[i]) i++
-            return prev.slice(i)
-          })
-          const refused = r.results.find((x) => x.reason)
-          if (refused?.reason) showNotice(refused.reason)
+
+        const edits = [...pending.slots]
+        if (edits.length) {
+          const source = edits[0].form
+          let target = refs.current.doc?.id === docId ? refs.current.form ?? source : source
+          const send = () => {
+            if (!edits.every(({ slot, form }) => sameValue(form.bindings[slot], target.bindings[slot]))) {
+              throw new Error('様式が変わったため、用紙の入力を保留しています')
+            }
+            return api.edits(docId, target.id, edits.map(({ slot, text }) => ({ slot, text })))
+          }
+          let result
+          try {
+            result = await send()
+          } catch (e) {
+            if (!(e instanceof ApiError) || e.status !== 409) throw e
+            const latest = await load()
+            if (!latest) return false
+            const updated = refs.current.form
+            if (!updated || updated.id !== latest.formVersionId || updated.id === target.id) throw e
+            target = updated
+            result = await send()
+          }
+          publish(result.document)
+          synced.push(...result.syncedTo)
+          pending.slots = pending.slots.filter((edit) => !edits.includes(edit))
+          redraw((n) => n + 1)
+          const refused = result.results.find((x) => x.reason)
+          if (refused?.reason && active.current === docId) showNotice(refused.reason)
         }
-        if (synced.length) {
-          setSync([...new Set(synced)].join('・'))
-          setTimeout(() => setSync(''), 3000)
+        if (active.current === docId) {
+          if (synced.length) {
+            setSync([...new Set(synced)].join('・'))
+            setTimeout(() => setSync(''), 3000)
+          }
+          setError('')
         }
-        setError('')
         return true
       } catch (e) {
-        if (e instanceof ApiError && e.status === 409) {
-          // サーバーの値が変わっていた（AI の書き込みなど）。送った直しはやめて、読み直す
-          setFieldQueue((prev) => { const next = new Map(prev); for (const [k, p] of fields) if (next.get(k) === p) next.delete(k); return next })
-          setSlotQueue((prev) => prev.filter((x) => !edits.includes(x)))
-          showNotice(e.message)
-          await load()
-        } else setError(String((e as Error).message))
+        if (active.current === docId) setError(String((e as Error).message))
         return false
       }
     })()
-    inflight.current = run.then(() => undefined)
-    const ok = await run
-    inflight.current = null
-    return ok
-  }, [docId, load, showNotice])
+    pending.inflight = run
+    try { return await run }
+    finally { pending.inflight = undefined }
+  }, [docId, load, pending, publish, showNotice])
 
   const schedule = useCallback(() => {
-    if (timer.current) clearTimeout(timer.current)
-    timer.current = setTimeout(() => void flush(), 600)
-  }, [flush])
+    if (pending.timer) clearTimeout(pending.timer)
+    pending.timer = setTimeout(() => void flush(), 600)
+  }, [flush, pending])
 
   const queueEdits = useCallback((edits: SlotEdit[]) => {
-    if (!edits.length) return
-    setSlotQueue((prev) => {
-      const next = [...prev]
-      for (const e of edits) {
-        // 同じ欄を続けて打ったときは、最後の文字だけを送る
-        if (next.length && next[next.length - 1].slot === e.slot) next[next.length - 1] = { ...e }
-        else next.push({ ...e })
-      }
-      return next
-    })
+    if (!edits.length || !form) return
+    const next = [...pending.slots]
+    for (const e of edits) {
+      // 同じ欄を続けて打ったときは、最後の文字だけを送る
+      if (next.length && next[next.length - 1].slot === e.slot) next[next.length - 1] = { ...e, form }
+      else next.push({ ...e, form })
+    }
+    pending.slots = next
+    redraw((n) => n + 1)
     schedule()
-  }, [schedule])
+  }, [form, pending, schedule])
 
   const setReason = useCallback((slot: string, reason: string | null) => {
     setReasons((prev) => {
@@ -323,27 +395,42 @@ export function useDocument(docId: string | undefined) {
 
   /** 欄の値をそのまま変える（差分の欄）。元の値は、この欄を最初に直したときのサーバーの値 */
   const setValue = useCallback((key: string, value: unknown, mode: 'edit' | 'revert' = 'edit') => {
-    setFieldQueue((prev) => {
-      const base = prev.has(key) ? prev.get(key)!.base : (refs.current.doc?.fields[key]?.value ?? null)
-      return new Map(prev).set(key, { value, base, mode })
-    })
+    const conflict = pending.conflicts.get(key)
+    if (conflict) {
+      pending.conflicts = new Map(pending.conflicts).set(key, { ...conflict, value, mode })
+      redraw((n) => n + 1)
+      return
+    }
+    const queued = pending.fields.get(key)
+    const base = queued ? queued.base : refs.current.doc?.fields[key]?.value ?? null
+    pending.fields = new Map(pending.fields).set(key, { value, base, mode })
+    redraw((n) => n + 1)
     schedule()
-  }, [schedule])
+  }, [pending, schedule])
 
-  /** 保存する。保存できたら true。直しを送れなかった・保存に失敗したら false（「保存しました」を出さない） */
+  const resolveConflict = useCallback((key: string, reapply: boolean) => {
+    const draft = pending.conflicts.get(key)
+    if (!draft) return
+    pending.conflicts = new Map(pending.conflicts)
+    pending.conflicts.delete(key)
+    if (reapply) {
+      pending.fields = new Map(pending.fields).set(key, { ...draft, base: doc?.fields[key]?.value ?? null })
+      schedule()
+    }
+    redraw((n) => n + 1)
+  }, [doc, pending, schedule])
+
   const doSave = useCallback(async (body: Parameters<typeof api.save>[1]): Promise<boolean> => {
-    if (!docId) return false
-    if (!(await flush())) return false
+    if (!docId || !(await flush()) || pending.conflicts.size) return false
     try {
       const r = await api.save(docId, body)
-      setDoc(r.document)
-      setError('')
+      publish(r.document)
       return true
     } catch (e) {
       setError(String((e as Error).message))
       return false
     }
-  }, [docId, flush])
+  }, [docId, flush, pending, publish])
 
   // ---------- ページ・画像 ----------
   const pages = useMemo(() => (form ? pagesOf(form) : []), [form])
@@ -404,7 +491,9 @@ export function useDocument(docId: string | undefined) {
 
   return {
     doc, form, pages, slotPage, current, saved, rendered, renderedSaved, marks, counts, total, updates, updatedFields, sync, notice, error,
-    pendingCount: slotQueue.length + fieldQueue.size,
+    pendingCount: slotQueue.length + fieldQueue.size + conflicts.size,
+    conflicts, resolveConflict,
+    hasLocalEdits: slotQueue.length + fieldQueue.size + conflicts.size + drafts.size + eraDrafts.size > 0,
     hasPdf: assets?.hasPdf ?? false,
     edit, type, commit, display, reasons, setValue, flush, reload: load, diffOf, imageOf, imageFailed,
     savePage: (no: number) => doSave({ scope: 'page', page: no }),

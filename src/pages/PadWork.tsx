@@ -1,6 +1,7 @@
 // iPad ②③ 用紙（キャンバス PadWork・PadRec）と、録音から用紙へ書く流れ A〜E（PadFlow1〜5）。
 // iPad でできることは 2 つだけ: 録音するかしないか、用紙を書き換えるか。
 import { useEffect, useRef, useState } from 'react'
+import { FieldConflicts } from '../form/FieldConflicts.tsx'
 import { FormPage } from '../form/FormPage.tsx'
 import { useClient } from '../form/useClient.ts'
 import { useDocument } from '../form/useDocument.ts'
@@ -8,6 +9,7 @@ import { useRecorder } from '../form/useRecorder.ts'
 import { api } from '../lib/api.ts'
 import { linkProps } from '../lib/router.tsx'
 import { countText } from '../components/Chrome.tsx'
+import { SyncDifferences } from '../components/SyncDifferences.tsx'
 
 export function PadWork({ clientId }: { clientId: string }) {
   const [tab, setTab] = useState<'assessment' | 'admission'>('assessment')
@@ -136,12 +138,21 @@ export function PadWork({ clientId }: { clientId: string }) {
       )}
       {recorder.phase === 'error' && (
         <div role="alert" className="strip" style={{ background: '#FDE8E7', color: '#A3261C' }}>
-          <div style={{ flex: '1 1 auto' }}>{recorder.error}。録音は iPad に残っています。電波のあるところで、もう一度開いてください。</div>
+          <div style={{ flex: '1 1 auto' }}>{recorder.error}。録音は iPad に残っています。通信状態を確認して再試行してください。</div>
+          <button type="button" onClick={recorder.retry} disabled={recorder.busy} className="tb">再試行</button>
           <button type="button" onClick={recorder.reset} style={{ font: 'inherit', fontSize: 15, fontWeight: 700, border: 0, background: 'transparent', color: '#A3261C', minHeight: 44 }}>閉じる</button>
         </div>
       )}
 
+      <FieldConflicts state={state} />
+      {state.error && <div role="alert" className="strip" style={{ background: '#FDE8E7', color: '#A3261C' }}>うまく送れませんでした（{state.error}）。</div>}
+      {recorder.phase === 'rec' && recorder.storageWarning && (
+        <div role="alert" className="strip" style={{ background: '#FFF4E5' }}>録音を端末に保存できていません。録音を止めるまで、この画面を開いたままにしてください。</div>
+      )}
       <div ref={scroller} onScroll={onScroll} style={{ flex: '1 1 auto', minHeight: 0, overflow: 'auto', padding: '16px 16px 150px', position: 'relative' }}>
+        {client?.documents.find((d) => d.kind === 'admission') && (
+          <SyncDifferences targetId={client.documents.find((d) => d.kind === 'admission')!.id} refreshKey={state.doc} hasLocalEdits={state.hasLocalEdits} onApplied={() => { void state.reload(); setSaved(false) }} />
+        )}
         {isAdm && doc && (
           <div role="status" style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: '#FFF4E5', border: '1px solid #F0C78A', borderRadius: 12, padding: '12px 14px', fontSize: 15, lineHeight: 1.5, marginBottom: 12 }}>
             <span aria-hidden="true" style={{ flex: '0 0 auto', width: 24, height: 24, borderRadius: 7, background: '#1F2430', color: '#FFFFFF', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>AI</span>
@@ -157,7 +168,7 @@ export function PadWork({ clientId }: { clientId: string }) {
                 <span>{isAdm ? p.title : `${p.no} ・ ${p.title}`}</span>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: 14, color: '#5B6672' }}>{dirty ? countText(c) : savedPages.has(p.no) ? '保存しました' : ''}</span>
-                  <button type="button" className="pgsave" disabled={!dirty || phase === 'writing'} onClick={async () => { if (await state.savePage(p.no)) setSavedPages((s) => new Set(s).add(p.no)) }} style={dirty ? undefined : { opacity: 0.35, cursor: 'default' }}>このページを保存</button>
+                  <button type="button" className="pgsave" disabled={!dirty || phase === 'writing'} onClick={async () => { if (!await state.savePage(p.no)) return; setSavedPages((s) => new Set(s).add(p.no)) }} style={dirty ? undefined : { opacity: 0.35, cursor: 'default' }}>このページを保存</button>
                 </span>
               </div>
               <FormPage page={p} state={state} touch disabled={phase === 'writing'} batchLabel={batchLabel} glow={phase === 'done'} />
