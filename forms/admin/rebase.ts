@@ -11,7 +11,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   let failed = false
   for (const t of (await db.query('SELECT id, kind, office_id FROM form_templates ORDER BY kind')).rows) {
     const r = await rebaseDocuments(db, t.id, { dryRun })
-    const scope = t.office_id ? `事業所 ${t.office_id} の` : '全事業所の'
+    const scope = t.office_id ? `事業所 ${t.office_id} の ` : '全事業所の '
     if (Object.keys(r.missingKeys).length) {
       failed = true
       console.log(`${scope}${t.kind}: 移せません。新しい版 v${r.to.version} が読まない key があります:`)

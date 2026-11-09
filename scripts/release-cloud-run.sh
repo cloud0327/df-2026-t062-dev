@@ -55,13 +55,14 @@ require_digest() {
 case "${1:-}" in
   migrate)
     # DB 移行。api を切り替える前に、同じイメージ（ダイジェスト）の node db/migrate.ts を Cloud Run ジョブで流す。
+    # --forms で、そのイメージの forms/seed の様式も登録する（中身が変わったときだけ新しい版になる）。
     # 移行は足すだけにしてある（db/migrate.ts）ので、失敗してもここで止まるだけで、動いている api・worker は変わらない。
     require_digest
     image="$IMAGE_BY_DIGEST"
     job="${CLOUD_RUN_MIGRATE_JOB:?Set CLOUD_RUN_MIGRATE_JOB}"
     assert_main
     echo "Migrating the database with $image"
-    gcloud run jobs update "$job" "${target[@]}" --image "$image" --command node --args db/migrate.ts
+    gcloud run jobs update "$job" "${target[@]}" --image "$image" --command node --args db/migrate.ts,--forms
     gcloud run jobs execute "$job" "${target[@]}" --wait
     ;;
   worker-deploy)

@@ -43,18 +43,13 @@ export class GcsStorage implements Storage {
   private client: Promise<import('@google-cloud/storage').Storage> | undefined
 
   constructor(env: NodeJS.ProcessEnv = process.env) {
-    const need = (k: string) => {
-      const v = env[k]
-      if (!v) throw new Error(`${k} を設定してください`)
-      return v
-    }
-    // 様式の置き場は api だけが使う（worker には設定しない）
-    this.names = { source: need('GCS_SOURCE_BUCKET'), output: need('GCS_OUTPUT_BUCKET'), work: need('GCS_WORK_BUCKET'), forms: env.GCS_FORMS_BUCKET }
+    // 置き場の名前は使うときに確かめる（様式の置き場は api と管理者の forms:assets だけが使い、worker には設定しない）
+    this.names = { source: env.GCS_SOURCE_BUCKET, output: env.GCS_OUTPUT_BUCKET, work: env.GCS_WORK_BUCKET, forms: env.GCS_FORMS_BUCKET }
   }
 
   private async bucket(b: Bucket) {
     const name = this.names[b]
-    if (!name) throw new Error(`置き場 ${b} が設定されていません（GCS_FORMS_BUCKET）`)
+    if (!name) throw new Error(`置き場 ${b} が設定されていません（GCS_${b.toUpperCase()}_BUCKET）`)
     this.client ??= import('@google-cloud/storage').then((m) => new m.Storage())
     return (await this.client).bucket(name)
   }

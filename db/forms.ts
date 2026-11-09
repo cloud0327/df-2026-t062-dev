@@ -1,7 +1,7 @@
 // 様式と様式の版の読み書き。版の中身は書き換えない（DB のトリガーでも止める）ので、読んだ版はプロセスの中で覚えておく。
 import { createHash } from 'node:crypto'
 import { checkBindings, formKeys, type Bindings } from '../core/binding.ts'
-import { contentOf, formAssetPath, toFormDef, type FormDef, type FormKind, type FormPage, type FormVersionView, type TemplateSlot } from '../core/form.ts'
+import { basePdfAssetPath, contentOf, toFormDef, type FormDef, type FormKind, type FormPage, type FormVersionView, type TemplateSlot } from '../core/form.ts'
 import { tx, type Db, type Tx } from './pool.ts'
 
 type Q = Db | Tx
@@ -92,8 +92,8 @@ export async function publishedVersionId(db: Q, officeId: string, kind: FormKind
   return r.id as string
 }
 
-/** 元の PDF とページの画像の、置き場（forms）の中の場所 */
-export const basePdfPath = (v: Pick<FormVersion, 'templateId' | 'version'>) => formAssetPath(v.templateId, v.version, 'base.pdf')
+/** 元の PDF の、置き場（forms）の中の場所 */
+export const basePdfPath = (v: Pick<FormVersion, 'basePdfSha256'>) => basePdfAssetPath(v.basePdfSha256)
 
 // ---------- 登録 ----------
 

@@ -24,6 +24,7 @@ locals {
     GCS_SOURCE_BUCKET   = google_storage_bucket.source.name
     GCS_OUTPUT_BUCKET   = google_storage_bucket.output.name
     GCS_WORK_BUCKET     = google_storage_bucket.work.name
+    GCS_FORMS_BUCKET    = google_storage_bucket.forms.name
     QUEUE_MODE          = "tasks"
     TASKS_QUEUE         = google_cloud_tasks_queue.jobs.id
     WORKER_URL          = local.worker_url

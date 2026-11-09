@@ -60,7 +60,7 @@ CREATE TABLE form_templates (
 );
 
 -- 様式の版。中身（欄の位置・対応・ページ）は書き換えない・消さない（直すときは新しい版）。
--- 使う版（published）は様式に 1 つ。元の PDF とページの画像は、非公開の置き場の <様式の id>/v<版>/ に置く
+-- 使う版（published）は様式に 1 つ。元の PDF とページの画像は、非公開の置き場の pdf/<base_pdf_sha256>/ に置く（同じ PDF の版どうしで同じファイル）
 CREATE TABLE form_template_versions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   template_id uuid NOT NULL REFERENCES form_templates(id),

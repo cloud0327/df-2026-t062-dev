@@ -76,6 +76,10 @@ function sortKeys(v: unknown): unknown {
   return v
 }
 
-/** 置き場（非公開の forms の置き場）の中の場所。様式・版ごとに分け、上書きしない */
-export const formAssetPath = (templateId: string, version: number, name: string) => `${templateId}/v${version}/${name}`
-export const pageImageName = (no: number) => `pages/p${no}.png`
+/**
+ * 置き場（非公開の forms の置き場）の中の場所は、元の PDF のハッシュで決める。
+ * 同じ PDF なら、版・事業所をまたいで同じファイル（対応だけを直した新しい版は、入れ直さなくてよい）。場所が中身で決まるので上書きは起きない。
+ */
+export const basePdfAssetPath = (sha256: string) => `pdf/${sha256}/base.pdf`
+/** ページの画像。PDF の何ページ目か（1 から。様式のページの pdfIndex + 1） */
+export const pageImageAssetPath = (sha256: string, pdfPage: number) => `pdf/${sha256}/pages/p${pdfPage}.png`

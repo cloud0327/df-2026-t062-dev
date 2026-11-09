@@ -54,7 +54,7 @@ output "worker_db_user" {
 }
 
 output "buckets" {
-  description = "source / output / work のバケット名。"
+  description = "source / output / work / forms のバケット名。"
   value       = { for k, b in local.buckets : k => b }
 }
 

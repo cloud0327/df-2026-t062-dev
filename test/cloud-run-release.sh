@@ -88,7 +88,7 @@ if bash scripts/release-cloud-run.sh migrate; then exit 1; fi
 export SCENARIO=success
 : > "$CALL_LOG"
 bash scripts/release-cloud-run.sh migrate
-grep -F "jobs update run jobs update t062-migrate" "$CALL_LOG" | grep -F -- "--image $IMAGE_BY_DIGEST --command node --args db/migrate.ts" >/dev/null
+grep -F "jobs update run jobs update t062-migrate" "$CALL_LOG" | grep -F -- "--image $IMAGE_BY_DIGEST --command node --args db/migrate.ts,--forms" >/dev/null
 grep -F "jobs execute run jobs execute t062-migrate" "$CALL_LOG" | grep -F -- "--wait" >/dev/null
 # 移行のあいだ、worker と api は動かさない
 [[ "$(cat "$WORKER_STATE")" == "$WORKER_PREVIOUS_REVISION" ]]

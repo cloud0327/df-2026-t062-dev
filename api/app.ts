@@ -2,7 +2,7 @@
 // worker の道（/tasks/*）はここには置かない（worker/app.ts）。
 import { Hono, type Context } from 'hono'
 import { z } from 'zod'
-import { formAssetPath, pageImageName, type FormAssetsView } from '../core/form.ts'
+import { pageImageAssetPath, type FormAssetsView } from '../core/form.ts'
 import { validValue } from '../core/schema.ts'
 import * as forms from '../db/forms.ts'
 import type { Db } from '../db/pool.ts'
@@ -116,7 +116,7 @@ export function createApp(deps: ApiDeps) {
     const storage = deps.storage()
     const window = dailyWindow()
     const pages = await Promise.all(v.pages.map(async (p) => {
-      const path = formAssetPath(v.templateId, v.version, pageImageName(p.no))
+      const path = pageImageAssetPath(v.basePdfSha256, p.pdfIndex + 1)
       return { no: p.no, url: await exists(storage, path) ? await storage.signedReadUrl('forms', path, window) : null }
     }))
     const body: FormAssetsView = { pages, hasPdf: await exists(storage, forms.basePdfPath(v)), expiresAt: window.until.toISOString() }

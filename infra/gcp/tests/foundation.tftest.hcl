@@ -103,7 +103,7 @@ run "private_service_with_scoped_deployer" {
   assert {
     condition = (
       toset([for e in google_cloud_run_v2_service.api.template[0].containers[0].env : e.name]) == toset([
-        "AUTH_MODE", "FIREBASE_PROJECT_ID", "STORAGE_MODE", "GCS_SOURCE_BUCKET", "GCS_OUTPUT_BUCKET", "GCS_WORK_BUCKET",
+        "AUTH_MODE", "FIREBASE_PROJECT_ID", "STORAGE_MODE", "GCS_SOURCE_BUCKET", "GCS_OUTPUT_BUCKET", "GCS_WORK_BUCKET", "GCS_FORMS_BUCKET",
         "QUEUE_MODE", "TASKS_QUEUE", "WORKER_URL", "TASKS_INVOKER_SA", "CLOUD_SQL_INSTANCE", "DB_USER", "DB_NAME",
       ]) &&
       local.api_env["AUTH_MODE"] == "firebase" &&
@@ -148,7 +148,7 @@ run "private_service_with_scoped_deployer" {
 
   assert {
     condition = alltrue([
-      for b in [google_storage_bucket.source, google_storage_bucket.output, google_storage_bucket.work] :
+      for b in [google_storage_bucket.source, google_storage_bucket.output, google_storage_bucket.work, google_storage_bucket.forms] :
       b.uniform_bucket_level_access && b.public_access_prevention == "enforced" && !b.versioning[0].enabled
     ])
     error_message = "Buckets must use uniform access, enforced public access prevention and no versioning."
@@ -162,6 +162,16 @@ run "private_service_with_scoped_deployer" {
   assert {
     condition     = length(google_storage_bucket.source.cors) == 0
     error_message = "Without app_origins the source bucket has no CORS rule."
+  }
+
+  assert {
+    condition = (
+      google_storage_bucket.forms.name == "mock-project-t062-forms" &&
+      length(google_storage_bucket.forms.cors) == 0 &&
+      length(google_storage_bucket.forms.lifecycle_rule) == 0 &&
+      !contains([for e in google_cloud_run_v2_service.worker.template[0].containers[0].env : e.name], "GCS_FORMS_BUCKET")
+    )
+    error_message = "The forms bucket keeps form PDFs and page images with no CORS or expiry, and only the API reads it."
   }
 
   assert {
@@ -198,6 +208,7 @@ run "private_service_with_scoped_deployer" {
       google_cloud_tasks_queue_iam_member.api_enqueues.role == "roles/cloudtasks.enqueuer" &&
       google_storage_bucket_iam_member.api_source.role == "roles/storage.objectAdmin" &&
       google_storage_bucket_iam_member.api_output.role == "roles/storage.objectAdmin" &&
+      google_storage_bucket_iam_member.api_forms.role == "roles/storage.objectViewer" &&
       google_storage_bucket_iam_member.worker_source.role == "roles/storage.objectViewer" &&
       google_storage_bucket_iam_member.worker_work.role == "roles/storage.objectAdmin" &&
       google_project_iam_member.worker_vertex.role == "roles/aiplatform.user" &&

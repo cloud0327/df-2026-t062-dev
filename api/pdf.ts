@@ -1,5 +1,5 @@
 // 保存した版から、様式の PDF を作る（pdfme）。AI が書いただけで保存していない値は出ない。
-// 元の PDF は、その書類の版の様式のもの（非公開の置き場 forms の <様式の id>/v<版>/base.pdf。npm run forms:assets が入れる）。
+// 元の PDF は、その版が指す PDF（非公開の置き場 forms の pdf/<sha256>/base.pdf。npm run forms:assets が入れる）。
 import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { renderAll } from '../core/binding.ts'

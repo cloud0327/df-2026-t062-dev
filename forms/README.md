@@ -22,8 +22,8 @@
 | やること | コマンド | 中身 |
 |---|---|---|
 | 出す前に確かめる | `npm run forms:check` | 印字欄と対応が 1 対 1、対応の key・項目が fields.json にあり、丸・✓ の直しが決まっている。対応が読む key と fields.json の `forms` が一致する。見本データで全部の欄が文字になる |
-| 版を登録する | `npm run forms:seed` | `seed/` を全事業所の様式の版として DB に入れる。中身が今の版と同じなら何もしない。違えば新しい版を作って使う版（published）にし、前の版は retired にする。`npm run db:seed` も先にこれを流す |
-| PDF と画像を置き場に入れる | `npm run forms:assets`（PDF だけなら `-- --pdf-only`） | 使う版の元の PDF（ハッシュで確かめる）と、ページの画像（pdftoppm。見せる枠だけ）を、非公開の置き場の `<様式の id>/v<版>/` に入れる。上書きしない |
+| 版を登録する | `npm run forms:seed` | `seed/` を全事業所の様式の版として DB に入れる。中身が今の版と同じなら何もしない。違えば新しい版を作って使う版（published）にし、前の版は retired にする。`npm run db:seed` と、リリースの移行（`node db/migrate.ts --forms`）も先にこれを流す |
+| PDF と画像を置き場に入れる | `npm run forms:assets`（PDF だけなら `-- --pdf-only`） | `seed/` の元の PDF（ハッシュで確かめる）と、ページの画像（pdftoppm。見せる枠だけ）を、非公開の置き場の `pdf/<元の PDF の sha256>/` に入れる。DB は要らない。場所が中身で決まるので上書きは起きない（同じなら same） |
 | 書類の向き先を移す | `npm run forms:rebase`（見るだけなら `-- --dry-run`） | 古い版を指す書類を使う版に移す。新しい版が、古い版の読んでいた key を全部読むときだけ（読まない key があると、その値が用紙から消えるため）。移した記録を `audit_events` に残す |
 | 元の PDF を手元に用意する | `npm run forms:fetch` | 様式を作る道具とテストのために、`tools/templates/<種類>/base.pdf` を用意する |
 

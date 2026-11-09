@@ -196,13 +196,14 @@ test('ページの画像は期限つきの URL で渡し、署名が違えば読
   assert.equal(before.hasPdf, hasPdf)
   // 画像を置く（本物は npm run forms:assets が置く）
   const forms = await import('../db/forms.ts')
-  const { formAssetPath, pageImageName } = await import('../core/form.ts')
+  const { pageImageAssetPath } = await import('../core/form.ts')
   const { createPool } = await import('../db/pool.ts')
   const db = await createPool({ DATABASE_URL: url, DB_SCHEMA: schema })
   const ver = await forms.loadVersion(db, formVersionId)
   await db.end()
   const png = new Uint8Array([137, 80, 78, 71, 1, 2, 3])
-  await putFake(formAssetPath(ver.templateId, ver.version, pageImageName(2)), png)
+  // 用紙の 2 ページ目は、PDF の 3 ページ目（1 ページ目は表紙）
+  await putFake(pageImageAssetPath(ver.basePdfSha256, ver.pages.find((p) => p.no === 2)!.pdfIndex + 1), png)
   const after = (await call(`/api/form-versions/${formVersionId}/assets`)).body as { pages: { no: number, url: string | null }[] }
   const u = after.pages.find((p) => p.no === 2)!.url!
   assert.ok(u, '置いた画像の URL がある')

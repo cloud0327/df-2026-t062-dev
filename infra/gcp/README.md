@@ -54,9 +54,9 @@ GitHubのデプロイ用サービスアカウントには、対象のArtifact Re
 | ファイル | 作るもの | 要点 |
 |---|---|---|
 | `sql.tf` | Cloud SQL（PostgreSQL 17、Enterprise、`db-f1-micro`）、DB `careman`、IAM DBユーザー2つ | 自動バックアップ7世代、PITR、`deletion_protection`（Terraformとの両方）、`cloudsql.iam_authentication=on`、パスワードなし。接続はCloud SQL Connector（VPCなし） |
-| `storage.tf` | バケット3つ `<project_id>-t062-source / output / work` | 均一アクセス、公開アクセス防止を強制、バージョニングなし。`work` は30日で削除。`source` は `app_origins` からの録音の直接送信用CORS（PUT/POST/GET/OPTIONS、maxAge 3600） |
+| `storage.tf` | バケット4つ `<project_id>-t062-source / output / work / forms` | 均一アクセス、公開アクセス防止を強制、バージョニングなし。`work` は30日で削除。`source` は `app_origins` からの録音の直接送信用CORS（PUT/POST/GET/OPTIONS、maxAge 3600）。`forms` は様式の元の PDF とページの画像（`pdf/<元の PDF の sha256>/…`）。api は読むだけで、画面には期限つきの URL で渡す |
 | `queue.tf` | Cloud Tasksキュー `t062-jobs`、Schedulerジョブ `t062-reconcile` | 同時配信3、最大5回まで間隔を広げて再試行。Schedulerは5分ごとにworkerの `/tasks/reconcile` をOIDCつきでPOST |
-| `worker.tf` | workerのCloud Runサービス、DB移行のCloud Runジョブ | workerは非公開（`invoker_iam_disabled=false`）、タイムアウト1800秒、最小0・最大2、1 CPU・1Gi。移行ジョブはapiの実行用サービスアカウントで動く |
+| `worker.tf` | workerのCloud Runサービス、DB移行のCloud Runジョブ | workerは非公開（`invoker_iam_disabled=false`）、タイムアウト1800秒、最小0・最大2、1 CPU・1Gi。移行ジョブはapiの実行用サービスアカウントで動き、DB の移行と様式の登録（`node db/migrate.ts --forms`）を流す |
 | `identity.tf` | Identity Platform設定 | メールとパスワードだけを有効、画面からのアカウント作成は禁止（`disabled_user_signup`）。アカウントは管理者が作る |
 | `budget.tf` | 予算アラート（任意） | `billing_account_id` を指定したときだけ作る |
 | `main.tf` | apiを更新、サービスアカウント追加 | apiは公開（`invoker_iam_disabled=true`。アプリがFirebaseのIDトークンを検証する）、1Gi、タイムアウト900秒、環境変数つき |
@@ -65,7 +65,7 @@ GitHubのデプロイ用サービスアカウントには、対象のArtifact Re
 
 | サービスアカウント | 付与する権限 |
 |---|---|
-| `cloud-run-api-runtime`（api、移行ジョブ） | `cloudsql.client` と `cloudsql.instanceUser`（プロジェクト単位）、`source` と `output` に `storage.objectAdmin`、自分自身に `iam.serviceAccountTokenCreator`（署名）、キューに `cloudtasks.enqueuer`、`tasks-invoker` に `iam.serviceAccountUser` |
+| `cloud-run-api-runtime`（api、移行ジョブ） | `cloudsql.client` と `cloudsql.instanceUser`（プロジェクト単位）、`source` と `output` に `storage.objectAdmin`、`forms` に `storage.objectViewer`（読むだけ）、自分自身に `iam.serviceAccountTokenCreator`（録音の送信 URL と、様式の画像の期限つきの URL の署名）、キューに `cloudtasks.enqueuer`、`tasks-invoker` に `iam.serviceAccountUser` |
 | `cloud-run-worker-runtime`（worker） | `cloudsql.client` と `cloudsql.instanceUser`、`source` に `storage.objectViewer`、`work` に `storage.objectAdmin`、`aiplatform.user`、Speech-to-Text（既定は `roles/speech.client`。workerが認識器を作る場合は変数 `worker_speech_role` を `roles/speech.editor` にする）、キューに `cloudtasks.enqueuer`、`tasks-invoker` に `iam.serviceAccountUser` |
 | `tasks-invoker`（Cloud TasksとSchedulerのOIDCの身元） | workerのCloud Runサービスにだけ `run.invoker` |
 | `github-api-deploy`（デプロイ用） | 上の表のapiと同じ範囲を、workerサービスと移行ジョブにも付ける（`run.developer`）。workerと移行ジョブの実行用サービスアカウントには `serviceAccountUser` |
@@ -104,6 +104,18 @@ IAM認証のDBユーザー（apiとworkerのサービスアカウント）はTer
    ```
 
 3. 移行はリリースのワークフローが流します。手元から流す場合は、`app` に所属するユーザー（api・workerのサービスアカウントを借りる、または `GRANT app TO` した自分のIAMユーザー）で `DB_USER=... CLOUD_SQL_INSTANCE=... npm run db:migrate` を実行します。`postgres` で流すとテーブルの持ち主が `postgres` になり、api・workerが使えなくなります。
+
+## 様式（アセスメント用紙・入院時情報提供書）を入れる
+
+様式は DB の版つきのデータです（`docs/DB設計.md`）。元の PDF とページの画像は、非公開の `forms` バケットに置きます。どちらもリポジトリには入れません。
+
+| いつ | 何をする | どうやって |
+|---|---|---|
+| リリースのたび | 様式の版を登録する（`forms/seed` の中身が変わったときだけ新しい版になる） | リリースのワークフローの移行の段が `node db/migrate.ts --forms` を流す |
+| 初回と、元の PDF が変わったとき | 元の PDF とページの画像を `forms` に入れる | 管理者が手元で `gcloud auth application-default login` のあと、`STORAGE_MODE=gcs GCS_FORMS_BUCKET=$(terraform output -json buckets \| jq -r .forms) npm run forms:assets`（pdftoppm が要る）。場所が元の PDF のハッシュで決まるので DB は要らず、上書きも起きない。入院時情報提供書は公開されていないので、手元の PDF を `forms/tools/templates/admission/base.pdf` に置いたときだけ入る |
+| 新しい版を出したあと | 古い版を指す書類を新しい版に移す | 移行ジョブの引数だけを変えて流す: `gcloud run jobs execute <移行ジョブ> --region <リージョン> --args forms/admin/rebase.ts,--dry-run --wait` で確かめてから、`--dry-run` を外して流す。新しい版が古い版の読んでいた key を全部読むときだけ移す |
+
+`forms` に入れる権限は、管理者の IAM ユーザー（プロジェクトのオーナーなど）を使います。api は読むだけです。
 
 ## 適用の順序
 

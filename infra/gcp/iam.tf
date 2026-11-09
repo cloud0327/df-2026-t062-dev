@@ -110,7 +110,14 @@ resource "google_storage_bucket_iam_member" "api_output" {
   member = "serviceAccount:${google_service_account.runtime.email}"
 }
 
-# 録音の送信 URL の署名（自分自身の鍵で署名する）
+# 様式の元の PDF とページの画像は読むだけ（PDF を作る・画像の期限つきの URL を渡す）
+resource "google_storage_bucket_iam_member" "api_forms" {
+  bucket = google_storage_bucket.forms.name
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${google_service_account.runtime.email}"
+}
+
+# 録音の送信 URL・様式の画像の期限つきの URL の署名（自分自身の鍵で署名する）
 resource "google_service_account_iam_member" "api_signs_as_itself" {
   service_account_id = google_service_account.runtime.name
   role               = "roles/iam.serviceAccountTokenCreator"
