@@ -84,7 +84,7 @@ case "${1:-}" in
     : "${WORKER_ID_TOKEN:?Missing worker identity token}"
     : "${WORKER_PREVIOUS_REVISION:?Missing worker rollback revision}"
     worker="${CLOUD_RUN_WORKER_SERVICE:?Set CLOUD_RUN_WORKER_SERVICE}"
-    if ! verify_json "${WORKER_URL:?Missing worker URL}" /healthz '{"status":"ok","source":"worker"}' "$WORKER_ID_TOKEN"; then
+    if ! verify_json "${WORKER_URL:?Missing worker URL}" /health '{"status":"ok","source":"worker"}' "$WORKER_ID_TOKEN"; then
       echo "Worker verification failed. Restoring $WORKER_PREVIOUS_REVISION." >&2
       if ! route_to "$WORKER_PREVIOUS_REVISION" "$worker" ||
         [[ "$(describe_service "$worker" | active_revision)" != "$WORKER_PREVIOUS_REVISION" ]]; then

@@ -48,6 +48,6 @@ export class FakeWriter implements SheetWriter {
     const raw = load(`gold/用紙/アセスメント_${first ? 'v1' : 'v2'}.json`)
     delete raw._comment
     const values = Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, { value: v, cite: [] as string[] }]))
-    return { values, usage: ZERO_USAGE, failed: [] }
+    return { values, usage: ZERO_USAGE, failed: [], incompleteFields: [] }
   }
 }

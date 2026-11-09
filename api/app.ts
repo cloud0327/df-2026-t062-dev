@@ -3,9 +3,10 @@
 import { Hono, type Context } from 'hono'
 import { z } from 'zod'
 import { pageImageAssetPath, type FormAssetsView } from '../core/form.ts'
+import { SURVEY_IMPORT_KEYS, surveyChoice } from '../core/survey-import.ts'
 import { validValue } from '../core/schema.ts'
 import * as forms from '../db/forms.ts'
-import type { Db } from '../db/pool.ts'
+import { tx, type Db } from '../db/pool.ts'
 import * as repo from '../db/repo.ts'
 import type { Verifier } from './auth.ts'
 import { FormUnavailable, makePdf } from './pdf.ts'
@@ -24,14 +25,27 @@ export interface ApiDeps {
 const ClientInput = z.object({ name: z.string().trim().min(1).max(60), sex: z.enum(['男', '女']).nullish(), status: z.enum(['在宅', '入院中', '入所中']).optional() })
 // base: 画面がこの直しの元にした値（null は空）。サーバーの今の値と違えば 409
 const PatchInput = z.object({ changes: z.array(z.object({ key: z.string().min(1).max(200), value: z.unknown(), base: z.unknown(), mode: z.enum(['edit', 'revert']).optional() })).min(1).max(200) })
+const SurveyImportInput = z.object({
+  fileName: z.string().trim().min(1).max(255),
+  sha256: z.string().regex(/^[0-9a-f]{64}$/),
+  recordedOn: z.iso.date().nullable(),
+  changes: z.array(z.object({
+    key: z.enum(SURVEY_IMPORT_KEYS), choice: z.number().int().min(1).max(4), base: z.unknown(),
+  })).min(1).max(SURVEY_IMPORT_KEYS.length),
+})
 const EditsInput = z.object({ formVersionId: z.string().uuid(), edits: z.array(z.object({ slot: z.string().min(1).max(200), text: z.string().max(20000) })).min(1).max(200) })
 const SaveInput = z.discriminatedUnion('scope', [
   z.object({ scope: z.literal('document') }),
   z.object({ scope: z.literal('page'), page: z.number().int().min(1).max(20) }),
   z.object({ scope: z.literal('hunk'), key: z.string().min(1), hunkIndex: z.number().int().min(0) }),
 ])
-const RecordingInput = z.object({ mime: z.string().min(1).max(100) })
-const CompleteInput = z.object({ durationMs: z.number().int().min(0).nullish() })
+const SyncDecisionInput = z.object({ key: z.string().min(1).max(200), decision: z.enum(['apply', 'keep']), source: z.unknown(), target: z.unknown() })
+const RecordingInput = z.object({
+  mime: z.string().min(1).max(100),
+  deviceRecordingId: z.string().uuid().optional(),
+  expiredUploadUrl: z.string().max(4096).optional(),
+})
+const CompleteInput = z.object({ durationMs: z.number().int().min(0).nullish(), bytes: z.number().int().positive().optional() })
 
 const json = (c: Context, body: unknown, status = 200) => c.json(body as object, status as 200)
 
@@ -125,12 +139,32 @@ export function createApp(deps: ApiDeps) {
 
   app.get('/api/documents/:id', authed(async (c, staff, db) => json(c, { document: await repo.getDocument(db, staff.officeId, c.req.param('id')!) })))
 
+  app.get('/api/documents/:id/sync-differences', authed(async (c, staff, db) =>
+    json(c, { differences: await repo.getSyncDifferences(db, staff.officeId, c.req.param('id')!) })))
+
+  app.post('/api/documents/:id/sync-decisions', authed(async (c, staff, db) => {
+    await repo.decideSyncDifference(db, staff, c.req.param('id')!, await body(c, SyncDecisionInput))
+    return json(c, { differences: await repo.getSyncDifferences(db, staff.officeId, c.req.param('id')!), document: await repo.getDocument(db, staff.officeId, c.req.param('id')!) })
+  }))
+
   // 欄の値をそのまま変える直し（差分の欄の文章）。画面が元にした値（base）が今の値と違えば 409
   app.patch('/api/documents/:id/fields', authed(async (c, staff, db) => {
     const { changes } = await body(c, PatchInput)
     for (const ch of changes) if (!validValue(ch.key, ch.value)) throw new repo.BadRequest(`値の形が違います: ${ch.key}`)
     const r = await repo.patchFields(db, staff, c.req.param('id')!, changes.map((ch) => ({ key: ch.key, value: ch.value ?? null, base: ch.base ?? null, mode: ch.mode })))
     return json(c, { ...r, document: await repo.getDocument(db, staff.officeId, c.req.param('id')!) })
+  }))
+
+  app.post('/api/documents/:id/survey-import', authed(async (c, staff, db) => {
+    const { fileName, sha256, recordedOn, changes } = await body(c, SurveyImportInput)
+    if (new Set(changes.map((ch) => ch.key)).size !== changes.length) throw new repo.BadRequest('同じ欄が重複しています')
+    const id = c.req.param('id')!
+    await repo.patchFields(db, staff, id, changes.map(({ key, choice, base }) => {
+      const value = surveyChoice(key, choice)
+      if (value === undefined) throw new repo.BadRequest('認定調査票の選択肢が不正です')
+      return { key, value, base, surveySource: { kind: 'survey-import', fileName, sha256, recordedOn, page: 2, choice } }
+    }))
+    return json(c, { document: await repo.getDocument(db, staff.officeId, id) })
   }))
 
   // 用紙の印字欄の直し。サーバーがその時点の値に当てる（当てられない直しは理由を返す）
@@ -167,20 +201,32 @@ export function createApp(deps: ApiDeps) {
     })
   }))
 
-  app.post('/api/clients/:id/recordings', authed(async (c, staff, db) => {
-    const { mime } = await body(c, RecordingInput)
-    const rec = await repo.createRecording(db, staff, c.req.param('id')!, mime)
-    const uploadUrl = await deps.storage().createUploadSession('source', rec.objectPath, mime, c.req.header('Origin') ?? undefined)
-    return json(c, { recordingId: rec.id, uploadUrl }, 201)
-  }))
+  const startRecording = authed(async (c, staff, db) => {
+    const { mime, deviceRecordingId, expiredUploadUrl } = await body(c, RecordingInput)
+    const result = await tx(db, async (conn) => {
+      const rec = await repo.createRecording(conn, staff, c.req.param('id')!, mime, deviceRecordingId)
+      const storage = deps.storage()
+      let uploadUrl = rec.uploadUrl
+      if (rec.status === 'uploaded' || (uploadUrl && await storage.size('source', rec.objectPath))) {
+        uploadUrl = null
+      } else if (!uploadUrl || uploadUrl === expiredUploadUrl) {
+        uploadUrl = await storage.createUploadSession('source', rec.objectPath, rec.mime, c.req.header('Origin') ?? undefined)
+        await repo.setRecordingUploadUrl(conn, rec.id, uploadUrl)
+      }
+      return { recordingId: rec.id, uploadUrl }
+    })
+    return json(c, result, 201)
+  })
+  app.post('/api/clients/:id/recordings', startRecording)
+  // 新しい画面が古い API に当たっても、再送のたびに別の録音を作らないよう別の道を使う。
+  app.post('/api/clients/:id/recordings/resumable', startRecording)
 
   app.post('/api/recordings/:id/complete', authed(async (c, staff, db) => {
-    const { durationMs } = await body(c, CompleteInput)
-    const rec = await repo.getRecording(db, staff.officeId, c.req.param('id')!)
-    const size = await deps.storage().size('source', rec.objectPath)
-    if (!size) return json(c, { error: 'not_uploaded' }, 409)
-    const job = await repo.completeRecording(db, staff, rec.id, size, durationMs ?? null)
-    if (job.status === 'queued') await deps.queue().enqueue(job.jobId)
+    const { durationMs, bytes } = await body(c, CompleteInput)
+    const jobId = await repo.completeRecording(db, staff, c.req.param('id')!, durationMs ?? null, bytes,
+      (path) => deps.storage().size('source', path))
+    if (!jobId) return json(c, { error: 'not_uploaded' }, 409)
+    const job = await repo.dispatchRecordingJob(db, jobId, () => deps.queue().enqueue(jobId, { initial: true }))
     return json(c, job, 202)
   }))
 
