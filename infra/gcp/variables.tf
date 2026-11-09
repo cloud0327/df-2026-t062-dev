@@ -147,9 +147,9 @@ variable "gemini_location" {
 }
 
 variable "stt_location" {
-  description = "worker の STT_LOCATION（Speech-to-Text のロケーション）。"
+  description = "worker の STT_LOCATION（Speech-to-Text のロケーション）。Chirp 3 の日本語は東京では断られるようになり、使えるのは us・eu だけなので us（2026-11-10）。"
   type        = string
-  default     = "asia-northeast1"
+  default     = "us"
 }
 
 variable "worker_speech_role" {

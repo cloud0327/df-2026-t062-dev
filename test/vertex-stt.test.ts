@@ -47,6 +47,18 @@ test('BatchRecognize: operation の名前をすぐ残し、待って結果を発
   assert.equal(started, 1)
 })
 
+test('地域の既定は us（東京では Chirp 3 の日本語が使えなくなった）。STT_LOCATION で変えられる', async () => {
+  const recognizers: unknown[] = []
+  const done = { done: true, result: { results: { 'gs://b/a.m4a': { transcript: { results: [] } } } } }
+  const client: SpeechApi = {
+    async batchRecognize(req) { recognizers.push(req.recognizer); return [{ name: 'op/1' }] },
+    async checkBatchRecognizeProgress() { return done },
+  }
+  await vertexStt({ GOOGLE_CLOUD_PROJECT: 'p' }, { client, pollMs: 1 }).transcribe({ uri: 'gs://b/a.m4a', mime: 'audio/mp4', recordingId: 'x', sequence: 1 })
+  await vertexStt({ GOOGLE_CLOUD_PROJECT: 'p', STT_LOCATION: 'eu' }, { client, pollMs: 1 }).transcribe({ uri: 'gs://b/a.m4a', mime: 'audio/mp4', recordingId: 'x', sequence: 1 })
+  assert.deepEqual(recognizers, ['projects/p/locations/us/recognizers/_', 'projects/p/locations/eu/recognizers/_'])
+})
+
 test('文字起こしできない形式（mp4 の Opus）は、Speech-to-Text を呼ばずに分かる名前の誤りで止める', async () => {
   let called = 0
   const client: SpeechApi = {

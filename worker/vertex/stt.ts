@@ -73,7 +73,8 @@ export interface SttOptions {
 
 export function vertexStt(env: NodeJS.ProcessEnv, opts: SttOptions = {}): Stt {
   const project = env.GOOGLE_CLOUD_PROJECT
-  const location = env.STT_LOCATION ?? 'asia-northeast1'
+  // Chirp 3 の日本語は、東京（asia-northeast1）では断られるようになった（2026-11-10。使えるのは us・eu だけ）ので、既定は us
+  const location = env.STT_LOCATION ?? 'us'
   const pollMs = opts.pollMs ?? 10_000
   const maxWaitMs = opts.maxWaitMs ?? Number(env.STT_MAX_WAIT_MS ?? 25 * 60_000)
   let client = opts.client
