@@ -378,4 +378,14 @@ test('認定調査票は確認した欄だけに出典を記録し、409では�
   })
   assert.equal(edited.status, 200)
   assert.equal(edited.body.document.fields['survey.2_2'].surveySource, undefined)
+
+  assert.equal((await call(path + '/save', { method: 'POST', body: JSON.stringify({ scope: 'page', page: 6 }) })).status, 200)
+  assert.equal((await call(path + '/fields', {
+    method: 'PATCH', body: JSON.stringify({ changes: [{ key: 'survey.2_2', value: null, base: '一部介助' }] }),
+  })).status, 200)
+  assert.equal((await post([{ key: 'survey.2_2', choice: 2, base: null }])).status, 409)
+  const cleared = (await call(path)).body.document
+  assert.equal(cleared.fields['survey.2_2'], undefined)
+  assert.equal(cleared.saved['survey.2_2'].value, '一部介助')
+
 })
