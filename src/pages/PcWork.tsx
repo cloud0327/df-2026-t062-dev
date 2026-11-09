@@ -1,7 +1,10 @@
 // PC ② 作業画面（キャンバス Main）。新しい利用者は ③（PcNew）、2 回目からの書き換えのあとは ④（PcDiff）の印になる。
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { countRequired } from '../../core/required.ts'
 import { FieldConflicts } from '../form/FieldConflicts.tsx'
+import { H, W } from '../form/layout.ts'
+import type { SurveyPreview } from '../survey/readSurvey.ts'
+import { availableTopics, fieldTargets, mergeSurveyDrafts, reviewItems, stageSurvey, surveyOverlays, type SurveyDraft } from '../components/petAssessment.ts'
 import { FormPage } from '../form/FormPage.tsx'
 import { useClient } from '../form/useClient.ts'
 import { useDocument } from '../form/useDocument.ts'
@@ -27,6 +30,13 @@ export function PcWork({ clientId, staffName }: { clientId: string, staffName: s
   const [savedPages, setSavedPages] = useState<Set<number>>(new Set())
   const scroller = useRef<HTMLDivElement>(null)
   const pageRefs = useRef<(HTMLDivElement | null)[]>([])
+  const [staged, setStaged] = useState<{ docId: string, drafts: SurveyDraft[] }>()
+  const [verifiedSources, setVerifiedSources] = useState<Set<string>>(new Set())
+  const [highlight, setHighlight] = useState('')
+  const highlightTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const [adoptingKey, setAdoptingKey] = useState('')
+  const adoption = useRef<Promise<boolean> | null>(null)
+  const [candidateError, setCandidateError] = useState('')
 
   useEffect(() => { setDocSaved(false); setSavedPages(new Set()); setCur(0) }, [docId])
   useEffect(() => { if (state.pendingCount) setDocSaved(false) }, [state.pendingCount])
@@ -43,6 +53,84 @@ export function PcWork({ clientId, staffName }: { clientId: string, staffName: s
   const doc = state.doc
   const isAdm = tab === 'admission'
   const pages = state.pages
+  const assessmentReady = !isAdm && !!doc && doc.id === docId && state.form?.id === doc.formVersionId
+  const targets = useMemo(() => fieldTargets(pages), [pages])
+  const drafts = assessmentReady && staged?.docId === doc.id ? staged.drafts : []
+  const overlays = surveyOverlays(drafts, state.current, state.saved, targets)
+  const review = assessmentReady ? reviewItems(doc, state.current, state.saved, drafts, targets) : []
+  const topics = assessmentReady ? availableTopics(state.current, targets) : []
+
+  useEffect(() => () => clearTimeout(highlightTimer.current), [])
+
+  const jumpToField = (key: string) => {
+    const el = scroller.current
+    const target = assessmentReady ? targets.get(key) : undefined
+    const sheet = target && pageRefs.current[target.pageIndex]?.querySelector('.pg')
+    if (!el || !target || !sheet || !sheet.clientHeight) return false
+    const slot = target.slots.find((s) => overlays.has(s.name) || state.display(s.name) === 'true' || state.display(s.name) === '✓') ?? target.slots[0]
+    const sheetBox = sheet.getBoundingClientRect()
+    const viewport = el.getBoundingClientRect()
+    const top = sheetBox.top - viewport.top + el.scrollTop + slot.y / H * sheet.clientHeight
+    const left = sheetBox.left - viewport.left + slot.x / W * sheet.clientWidth
+    const outside = left < 0 || left + slot.w / W * sheet.clientWidth > el.clientWidth
+    el.scrollTo({
+      top: top - Math.min(100, el.clientHeight / 4),
+      left: outside ? el.scrollLeft + left - el.clientWidth / 4 : el.scrollLeft,
+      behavior: 'instant',
+    })
+    setCur(target.pageIndex)
+    clearTimeout(highlightTimer.current)
+    setHighlight(slot.name)
+    highlightTimer.current = setTimeout(() => setHighlight(''), 2500)
+    return true
+  }
+
+  const stagePreview = (preview: SurveyPreview) => {
+    if (!assessmentReady) throw new Error('アセスメントを開き直してから読み取ってください。')
+    const incoming = stageSurvey(preview, state.current, state.saved)
+    const next = mergeSurveyDrafts(drafts, incoming)
+    setStaged({ docId: doc.id, drafts: next })
+    setCandidateError('')
+    return [...surveyOverlays(next, state.current, state.saved, targets).values()].filter((draft) => draft.source.sha256 === preview.sha256).length
+  }
+
+  const blockDraft = (key: string) => {
+    setStaged((previous) => previous && previous.docId === docId && previous.drafts.some((draft) => draft.candidate.key === key)
+      ? { ...previous, drafts: previous.drafts.map((draft) => draft.candidate.key === key ? { ...draft, blocked: true } : draft) }
+      : previous)
+  }
+
+  const adoptCandidate = (slot: string) => {
+    const draft = overlays.get(slot)
+    if (!assessmentReady || !draft || draft.candidate.choice === null || adoption.current) return
+    const { candidate: { key, choice }, source: { sha256, fileName, recordedOn } } = draft
+    if (!verifiedSources.has(sha256)) {
+      setCandidateError('「書類を取り込む」で原本の対象者を確認してから、黄色の選択肢を選んでください。')
+      return
+    }
+    setCandidateError('')
+    setAdoptingKey(key)
+    const run = async () => {
+      try {
+        if (!await state.flush()) return false
+        await state.adoptSurvey({ fileName, sha256, recordedOn, changes: [{ key, choice, base: null }] })
+        blockDraft(key)
+        setDocSaved(false)
+        return true
+      } catch {
+        await state.reload()
+        setCandidateError('候補を入力できませんでした。現在の値を確認してから、もう一度選んでください。')
+        return false
+      } finally {
+        adoption.current = null
+        setAdoptingKey('')
+      }
+    }
+    adoption.current = run()
+  }
+
+  const canSave = () => adoption.current ?? Promise.resolve(true)
+
   const maxW = Math.round(820 * zoom / 100)
   const required = !isAdm && doc ? countRequired(state.current) : client?.required ?? { filled: 0, total: 84 }
   const latestBatch = doc?.batches[0]
@@ -81,7 +169,7 @@ export function PcWork({ clientId, staffName }: { clientId: string, staffName: s
         <span>{isAdm ? title : `${no} ・ ${title}`}</span>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 11, color: '#5B6672' }}>{dirty ? countText(c) : savedPages.has(no) ? '保存しました' : i === 0 && empty ? 'まだ何も書かれていません' : ''}</span>
-          <button type="button" className="pgsave" disabled={!dirty} onClick={async () => { if (!await state.savePage(no)) return; setSavedPages((s) => new Set(s).add(no)) }} style={dirty ? undefined : { opacity: 0.35, cursor: 'default' }}>このページを保存</button>
+          <button type="button" className="pgsave" disabled={!dirty} onClick={async () => { if (!await canSave() || !await state.savePage(no)) return; setSavedPages((s) => new Set(s).add(no)) }} style={dirty ? undefined : { opacity: 0.35, cursor: 'default' }}>このページを保存</button>
         </span>
       </div>
     )
@@ -155,7 +243,7 @@ export function PcWork({ clientId, staffName }: { clientId: string, staffName: s
               </div>
               <span style={{ fontSize: 12, color: '#5B6672' }}>{empty ? 'まだ何も書かれていません' : countText(state.total) || 'すべて保存済み'}</span>
               {docSaved && <span role="status" style={{ fontSize: 13, fontWeight: 500, color: '#1F49B0' }}>保存しました</span>}
-              <button type="button" className="savebtn pc-work-save" aria-label="書類を保存" onClick={async () => { const ok = await state.saveDocument(); setDocSaved(ok); if (ok) setSavedPages(new Set(pages.map((p) => p.no))) }}>保存</button>
+              <button type="button" className="savebtn pc-work-save" aria-label="書類を保存" onClick={async () => { const ok = await canSave() && await state.saveDocument(); setDocSaved(ok); if (ok) setSavedPages(new Set(pages.map((p) => p.no))) }}>保存</button>
             </div>
           </div>
 
@@ -181,10 +269,13 @@ export function PcWork({ clientId, staffName }: { clientId: string, staffName: s
             {doc && pages.map((p, i) => (
               <div key={`${doc.id}-${p.no}`} ref={(el) => { pageRefs.current[i] = el }} style={{ margin: '0 auto 24px', width: `${zoom}%`, maxWidth: maxW }}>
                 {pageLabel(p.no, p.title, i)}
-                <FormPage page={p} state={state} touch={false} disabled={false} batchLabel={batchLabel} incompleteFields={incomplete?.incompleteFields} />
+                <FormPage page={p} state={state} touch={false} disabled={false} batchLabel={batchLabel} incompleteFields={incomplete?.incompleteFields}
+                  petFocus={assessmentReady ? highlight : undefined} provisional={assessmentReady ? overlays : undefined}
+                  adoptingKey={assessmentReady ? adoptingKey : undefined} onAdopt={adoptCandidate} onEditChoice={assessmentReady ? blockDraft : undefined} />
               </div>
             ))}
           </div>
+          {assessmentReady && candidateError && <div className="pc-pet-candidate-error" role="alert">{candidateError}</div>}
           {state.notice && (
             <div role="status" style={{ position: 'absolute', left: '50%', bottom: state.sync ? 68 : 20, transform: 'translateX(-50%)', zIndex: 7, display: 'inline-flex', alignItems: 'center', gap: 8, background: '#1F2430', color: '#FFFFFF', borderRadius: 999, padding: '10px 18px', fontSize: 13, boxShadow: '0 8px 24px rgba(20,24,32,0.25)', maxWidth: '90%' }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></svg>{state.notice}
@@ -197,18 +288,17 @@ export function PcWork({ clientId, staffName }: { clientId: string, staffName: s
           )}
         </section>
 
-        <PetHelper survey={!isAdm && doc && doc.id === docId && client ? {
-          document: doc,
-          clientName: client.name,
-          beforeApply: state.flush,
-          onApplied: () => {
-            reloadDoc.current()
-            setDocSaved(false)
-            setSavedPages((previous) => { const next = new Set(previous); next.delete(6); return next })
-            const pageIndex = pages.findIndex((p) => p.no === 6)
-            if (pageIndex !== -1) jump(pageIndex)
-          },
-        } : undefined} />
+        <PetHelper available={assessmentReady} clientName={client?.name ?? ''} review={review} topics={topics}
+          onJump={jumpToField} onPreview={stagePreview} verifiedSources={verifiedSources}
+          onIdentity={(sha, confirmed) => {
+            setCandidateError('')
+            setVerifiedSources((previous) => {
+              const next = new Set(previous)
+              if (confirmed) next.add(sha)
+              else next.delete(sha)
+              return next
+            })
+          }} />
       </div>
     </div>
   )
