@@ -123,15 +123,16 @@ export function useDocument(docId: string | undefined) {
   const marks = useMemo(() => (form ? slotMarks(form, current, saved, byOf) : new Map<string, Who>()), [form, current, saved, byOf])
 
   // ---------- 送る ----------
-  const flush = useCallback(async () => {
-    if (!docId) return
+  /** 送っていない直しを送る。送れた（送るものがなかった）ら true。送れなかった・409 で捨てたら false */
+  const flush = useCallback(async (): Promise<boolean> => {
+    if (!docId) return false
     if (timer.current) { clearTimeout(timer.current); timer.current = undefined }
     while (inflight.current) await inflight.current
     const { form: f } = refs.current
     const fields = [...refs.current.fieldQueue]
     const edits = [...refs.current.slotQueue]
-    if (!fields.length && !edits.length) return
-    const run = (async () => {
+    if (!fields.length && !edits.length) return true
+    const run = (async (): Promise<boolean> => {
       try {
         const synced: string[] = []
         if (fields.length) {
@@ -162,6 +163,7 @@ export function useDocument(docId: string | undefined) {
           setTimeout(() => setSync(''), 3000)
         }
         setError('')
+        return true
       } catch (e) {
         if (e instanceof ApiError && e.status === 409) {
           // サーバーの値が変わっていた（AI の書き込みなど）。送った直しはやめて、読み直す
@@ -170,11 +172,13 @@ export function useDocument(docId: string | undefined) {
           showNotice(e.message)
           await load()
         } else setError(String((e as Error).message))
+        return false
       }
     })()
-    inflight.current = run
-    await run
+    inflight.current = run.then(() => undefined)
+    const ok = await run
     inflight.current = null
+    return ok
   }, [docId, load, showNotice])
 
   const schedule = useCallback(() => {
@@ -326,14 +330,18 @@ export function useDocument(docId: string | undefined) {
     schedule()
   }, [schedule])
 
-  const doSave = useCallback(async (body: Parameters<typeof api.save>[1]) => {
-    if (!docId) return
-    await flush()
+  /** 保存する。保存できたら true。直しを送れなかった・保存に失敗したら false（「保存しました」を出さない） */
+  const doSave = useCallback(async (body: Parameters<typeof api.save>[1]): Promise<boolean> => {
+    if (!docId) return false
+    if (!(await flush())) return false
     try {
       const r = await api.save(docId, body)
       setDoc(r.document)
+      setError('')
+      return true
     } catch (e) {
       setError(String((e as Error).message))
+      return false
     }
   }, [docId, flush])
 
