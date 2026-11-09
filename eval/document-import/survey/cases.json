@@ -1,0 +1,23 @@
+{
+  "subject": "検証 太郎",
+  "surveyDate": "2026-11-04",
+  "setting": "自宅",
+  "notes": [
+    { "item": "2-2", "text": "自宅内は歩行器を使い、家族が横について見守る。毎日。" },
+    { "item": "2-4", "text": "食事は自分で口に運ぶ。毎食、家族が食事中に声をかけて見守る。" },
+    { "item": "2-5", "text": "排尿後、下衣を上げるときに家族が一部介助する。毎日。" }
+  ],
+  "difficult": {
+    "2-2": { "kind": "faint_mark", "status": "needs_review" },
+    "2-4": { "kind": "multiple_marks", "additionalChoice": 3, "status": "needs_review" }
+  },
+  "conflict": {
+    "item": "2-5",
+    "source": "架空の面談メモ",
+    "recordedAt": "2026-11-04T15:00:00+09:00",
+    "setting": "自宅",
+    "text": "家族より、ここ1週間は毎回、排尿時の一連の動作をすべて介助しているとのこと。",
+    "alternativeValue": "全介助",
+    "status": "needs_review"
+  }
+}

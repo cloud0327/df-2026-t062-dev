@@ -61,6 +61,8 @@ export interface WriterResult {
   usage: Usage
   /** 書けなかった 23 項目の番号など（一部だけ書けたとき） */
   failed: string[]
+  /** AI が処理できなかった fields.json の key */
+  incompleteFields: string[]
 }
 
 export interface SheetWriter {

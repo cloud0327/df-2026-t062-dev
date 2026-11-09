@@ -4,7 +4,7 @@ import { reconcile, runJob, type WorkerDeps } from './jobs.ts'
 
 export function createWorkerApp(deps: WorkerDeps, enqueue: (jobId: string) => Promise<void>) {
   const app = new Hono()
-  app.get('/healthz', (c) => c.json({ status: 'ok', source: 'worker' }))
+  app.get('/health', (c) => c.json({ status: 'ok', source: 'worker' }))
   // 処理は応答の前に終える（Cloud Run は応答のあとの処理を遅くする）。失敗したら 500 で、Cloud Tasks が間をあけてやり直す
   app.post('/tasks/jobs/:id/run', async (c) => {
     await runJob(deps, c.req.param('id'))
