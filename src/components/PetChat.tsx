@@ -1,5 +1,5 @@
 // 「書き方を相談する」: ペットに書き方を相談する。書き換えの案は差分のカードで出し、押したときだけ用紙に入れる。
-import { useEffect, useRef, useState, type Dispatch, type FormEvent, type KeyboardEvent, type SetStateAction } from 'react'
+import { useLayoutEffect, useRef, useState, type Dispatch, type FormEvent, type KeyboardEvent, type SetStateAction } from 'react'
 import { sentenceDiff } from '../../core/diff.ts'
 import { api } from '../lib/api.ts'
 import { PetIcon, PetMessage } from './PetVisuals.tsx'
@@ -38,11 +38,16 @@ export function PetChat({ documentId, entries, setEntries, current, onSet, onJum
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [stale, setStale] = useState<Set<string>>(new Set())
-  const end = useRef<HTMLDivElement>(null)
+  const root = useRef<HTMLDivElement>(null)
   const activeDoc = useRef(documentId)
   activeDoc.current = documentId
 
-  useEffect(() => { end.current?.scrollIntoView({ block: 'end' }) }, [entries.length, busy])
+  // 送ったとき・答えが来たときは、ペット欄をいちばん下まで送る（入力欄は下に固定なので、最新の吹き出しがその上に見える）。
+  // scrollIntoView は外側の枠まで動かし、吹き出しが入力欄の裏に隠れるので使わない
+  useLayoutEffect(() => {
+    const box = root.current?.closest('.assistant-body')
+    if (box) box.scrollTop = box.scrollHeight
+  }, [entries.length, busy, error])
 
   const send = async (e?: FormEvent) => {
     e?.preventDefault()
@@ -87,7 +92,7 @@ export function PetChat({ documentId, entries, setEntries, current, onSet, onJum
   }
 
   return (
-    <div className="assistant-chat">
+    <div ref={root} className="assistant-chat">
       <PetMessage>用紙の書き方や、文章の表現を相談できます。<br />直してほしいときは「相談内容を短くして」のように書いてください。</PetMessage>
       <ol className="assistant-chat-log" aria-live="polite">
         {entries.map((m) => (
@@ -118,7 +123,6 @@ export function PetChat({ documentId, entries, setEntries, current, onSet, onJum
         {busy && <li className="assistant-chat-row assistant-chat-pet"><p className="assistant-chat-bubble assistant-chat-thinking"><span className="assistant-spinner" aria-hidden="true" />考えています…</p></li>}
       </ol>
       {error && <p className="assistant-error" role="alert">{error}</p>}
-      <div ref={end} />
       <form className="assistant-chat-form" onSubmit={send}>
         <textarea className="assistant-revision" aria-label="相談内容" placeholder={documentId ? '相談したい内容を入力…（Ctrl＋Enter で送る）' : '用紙を開くと相談できます'}
           value={text} onChange={(e) => setText(e.target.value)} onKeyDown={onKey} disabled={!documentId} maxLength={4000} rows={3} />
