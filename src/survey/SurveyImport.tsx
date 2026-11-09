@@ -87,11 +87,9 @@ export function SurveyImport({ active, available, clientName, onPreview, onIdent
               <div>
                 <strong>{kind === 'nursing' ? <>看護サマリー・<br />退院時情報</> : title}</strong>
                 <small>{description}</small>
-                {kind === 'survey' && <div role="status">
-                  {selected && <>
-                    <small className="assistant-file-status"><PetIcon name="check-circle-fill" />選択済み</small>
-                    <small className="assistant-filename">{selected.name}</small>
-                  </>}
+                {kind === 'survey' && <div className="assistant-file-selection" role="status">
+                  {selected && <small className="assistant-file-status"><PetIcon name="check-circle-fill" />選択済み</small>}
+                  {selected && <small className="assistant-filename" title={selected.name}>{selected.name}</small>}
                 </div>}
               </div>
               <div className="assistant-file-actions">
@@ -106,9 +104,10 @@ export function SurveyImport({ active, available, clientName, onPreview, onIdent
                       }
                       e.currentTarget.value = ''
                     }} />
-                  <span><PetIcon name="folder" />{action}</span>
+                  <span aria-hidden="true"><PetIcon name="folder" />{action}</span>
+                  {selected && <span className="assistant-file-picker-size" aria-hidden="true"><PetIcon name="folder" />ファイルを選択</span>}
                 </label>
-                {selected && <button type="button" className="assistant-file-clear" onClick={() => {
+                {kind === 'survey' && <button type="button" className="assistant-file-clear" disabled={!selected} onClick={() => {
                   setFiles((previous) => ({ ...previous, [kind]: undefined }))
                   setState({ status: 'select' })
                   surveyPicker.current?.focus()
