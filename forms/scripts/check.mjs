@@ -19,7 +19,7 @@ for (const id of Object.keys(FORMS)) {
   const warnings = [];
 
   // 1. テンプレートの欄と、変換プログラムが出す欄が一致するか
-  const template = loadTemplate(id);
+  const template = loadTemplate(id, { withPdf: false });
   const slots = new Set(template.schemas.flat().map((s) => s.name));
   const produced = new Set(Object.keys(form.toInputs({})));
   for (const n of slots) if (!produced.has(n)) problems.push(`テンプレートにあるが、変換プログラムが値を出さない欄: ${n}`);
