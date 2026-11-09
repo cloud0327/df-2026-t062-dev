@@ -114,6 +114,12 @@ interface Ctx {
   /** 落とした・入れなかった数（中身は残さない） */
   stats: Record<string, number>
   failed: Set<string>
+  incompleteFields: Set<string>
+}
+
+function markFailed(ctx: Ctx, group: number, specs: Spec[], prefix = '') {
+  ctx.failed.add(`${prefix}${group}`)
+  for (const spec of specs) ctx.incompleteFields.add(spec.key)
 }
 const bump = (ctx: Ctx, k: string, n = 1) => { ctx.stats[k] = (ctx.stats[k] ?? 0) + n }
 
@@ -123,7 +129,7 @@ function takeValues(ctx: Ctx, specs: Spec[], r: unknown, allowed: Set<string>): 
   for (const s of specs) {
     const rec = isRecord(r) && isRecord(r[s.key]) ? r[s.key] as Record<string, unknown> : {}
     const [v, problems] = validateValue(s, rec.value)
-    if (problems.length) bump(ctx, '値の問題')
+    if (problems.length) { bump(ctx, '値の問題'); ctx.incompleteFields.add(s.key) }
     const cite = (Array.isArray(rec.from) ? rec.from : []).filter((i): i is string => typeof i === 'string' && allowed.has(i))
     if (v !== null) {
       if (!cite.length) bump(ctx, '根拠のない値')
@@ -192,8 +198,8 @@ function applyChecks(ctx: Ctx, specs: Spec[], written: Record<string, Rec>, r: u
     const found: string[] = []
     for (const a of atoms(s, rec.value)) {
       const c = verdicts.get(s.key + a.path)
-      if (!c) bump(ctx, '読み直しの答えがない')
-      else if (c.verdict !== 'ok') { drop.add(a.path); bump(ctx, `落とした:${String(c.verdict)}`) }
+      if (!c) { bump(ctx, '読み直しの答えがない'); ctx.incompleteFields.add(s.key) }
+      else if (c.verdict !== 'ok') { drop.add(a.path); ctx.incompleteFields.add(s.key); bump(ctx, `落とした:${String(c.verdict)}`) }
       else found.push(...(Array.isArray(c.from) ? c.from : []).filter((i): i is string => typeof i === 'string' && known.has(i)))
     }
     out[s.key] = { value: dropAtoms(s, rec.value, drop), cite: [...new Set([...rec.cite, ...found])] }
@@ -207,7 +213,7 @@ async function checkAll(ctx: Ctx, groups: Map<number, Spec[]>, written: Record<s
   const results = await mapLimit(jobs, ctx.limit, async ([n, specs]) => [n, specs, await settle(check(ctx, n, specs, written, record))] as const)
   const out: Record<string, Rec> = {}
   for (const [n, specs, r] of results) {
-    if (!r.ok) { ctx.failed.add(`check:${n}`); continue }
+    if (!r.ok) { markFailed(ctx, n, specs, 'check:'); continue }
     bump(ctx, '確かめた単位', r.value[1])
     Object.assign(out, applyChecks(ctx, specs, written, r.value[0], known))
   }
@@ -223,7 +229,7 @@ async function final(ctx: Ctx, groups: Map<number, Spec[]>, fields: Record<strin
     people: '', sheet: fmtSheet(fields), sources: record,
   })
   const r = await settle(ctx.llm.ask(prompt, fieldSchema(specs), { step: '全体のまとめ', group: 0 }))
-  if (!r.ok) { ctx.failed.add('0'); return {} }
+  if (!r.ok) { markFailed(ctx, 0, specs); return {} }
   return takeValues(ctx, specs, r.value, known)
 }
 
@@ -257,7 +263,7 @@ export function sheetWriter(newLlm: () => Llm, opts: WriterOptions = {}): SheetW
   return {
     async write({ visits, newVisitId, current, people, first }): Promise<WriterResult> {
       const llm = newLlm()
-      const ctx: Ctx = { llm, people, limit, stats: {}, failed: new Set() }
+      const ctx: Ctx = { llm, people, limit, stats: {}, failed: new Set(), incompleteFields: new Set() }
       const idx = visits.findIndex((v) => v.id === newVisitId)
       const upto = (idx < 0 ? visits : visits.slice(0, idx + 1)) as LooseVisit[]
       const visit = upto[upto.length - 1]
@@ -280,7 +286,7 @@ export function sheetWriter(newLlm: () => Llm, opts: WriterOptions = {}): SheetW
         const results = await mapLimit(jobs, limit, async ([n, specs]) => [n, specs, await settle(direct(ctx, n, specs, record))] as const)
         const written: Record<string, Rec> = {}
         for (const [n, specs, r] of results) {
-          if (!r.ok) { ctx.failed.add(String(n)); continue }
+          if (!r.ok) { markFailed(ctx, n, specs); continue }
           Object.assign(written, takeValues(ctx, specs, r.value, known))
         }
         const checked = await checkAll(ctx, allGroups, written, record, known)
@@ -300,7 +306,7 @@ export function sheetWriter(newLlm: () => Llm, opts: WriterOptions = {}): SheetW
         const results = await mapLimit(jobs, limit, async ([n, specs]) => [n, specs, await settle(update(ctx, n, specs, fields, visit, newRecord))] as const)
         const written: Record<string, Rec> = {}
         for (const [n, specs, r] of results) {
-          if (!r.ok) { ctx.failed.add(String(n)); continue }
+          if (!r.ok) { markFailed(ctx, n, specs); continue }
           const res = isRecord(r.value) ? r.value : {}
           const changed = new Set(Array.isArray(res.changed) ? res.changed : [])
           for (const s of specs) {
@@ -320,7 +326,7 @@ export function sheetWriter(newLlm: () => Llm, opts: WriterOptions = {}): SheetW
 
       const usage = llm.usage()
       console.log(JSON.stringify({ severity: 'INFO', msg: 'writer done', first, values: Object.keys(values).length, failed: [...ctx.failed], stats: ctx.stats, calls: usage.calls, yen: usage.yen }))
-      return { values, usage, failed: [...ctx.failed] }
+      return { values, usage, failed: [...ctx.failed], incompleteFields: [...ctx.incompleteFields] }
     },
   }
 }

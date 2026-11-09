@@ -1,4 +1,5 @@
 import { useRef, useState, type ReactNode } from 'react'
+import { SurveyImport, type SurveyImportProps } from '../survey/SurveyImport.tsx'
 import './PetHelper.css'
 
 const menus = {
@@ -10,7 +11,7 @@ const menus = {
   documents: {
     icon: 'file-earmark-plus',
     title: '書類を追加する',
-    description: '関連する書類をアップロードしたり、必要な書類の作成を依頼できます。',
+    description: '認定調査票から、アセスメントに反映する候補を確認できます。',
   },
   interview: {
     icon: 'calendar-plus',
@@ -21,12 +22,6 @@ const menus = {
 
 type Menu = keyof typeof menus
 const menuKeys = ['revise', 'documents', 'interview'] satisfies Menu[]
-
-const sampleFiles = [
-  { name: '診療情報提供書.pdf', size: '1.2 MB', icon: 'file-earmark-pdf-fill' },
-  { name: '検査結果.pdf', size: '2.8 MB', icon: 'file-earmark-pdf-fill' },
-  { name: '服薬情報.jpg', size: '0.9 MB', icon: 'image' },
-]
 
 const sampleTopics = [
   '住環境の詳細（段差・手すりの有無など）',
@@ -44,28 +39,6 @@ function Pet() {
 
 function AssistantMessage({ children }: { children: ReactNode }) {
   return <div className="assistant-message"><Pet /><p>{children}</p></div>
-}
-
-function DocumentsMock() {
-  return (
-    <>
-      <div className="assistant-upload">
-        <button className="assistant-primary" type="button" disabled><Icon name="folder" />ファイルを選択</button>
-        <p>対応形式：PDF / JPG / PNG（1ファイル100MBまで）</p>
-      </div>
-      <h4>追加する書類の一覧（{sampleFiles.length}件）</h4>
-      <ul className="assistant-files">
-        {sampleFiles.map(({ name, size, icon }) => (
-          <li key={name}>
-            <span className={`assistant-icon-tile${icon === 'image' ? '' : ' assistant-pdf'}`}><Icon name={icon} /></span>
-            <span><strong>{name}</strong><small>{size}</small></span>
-            <button className="assistant-icon-button" type="button" aria-label={`${name}を取り除く`} disabled><Icon name="x-lg" /></button>
-          </li>
-        ))}
-      </ul>
-      <button className="assistant-primary assistant-read" type="button" disabled><Icon name="stars" />追加してAIで読み取る</button>
-    </>
-  )
 }
 
 function InterviewMock() {
@@ -97,7 +70,7 @@ function InterviewMock() {
   )
 }
 
-export function PetHelper() {
+export function PetHelper({ survey }: { survey?: SurveyImportProps }) {
   const [menu, setMenu] = useState<Menu | null>(null)
   const selected = menu ? menus[menu] : null
   const lastMenu = useRef<Menu | null>(null)
@@ -126,7 +99,8 @@ export function PetHelper() {
                 <p>{selected.description}</p>
               </div>
             )}
-            {menu === 'documents' && <DocumentsMock />}
+            {menu === 'documents' && (survey ? <SurveyImport key={survey.document.id} {...survey} />
+              : <p>アセスメントを開くと、認定調査票を読み取れます。</p>)}
             {menu === 'interview' && <InterviewMock />}
             {menu === 'revise' && <textarea className="assistant-revision" aria-label="相談内容" placeholder="相談したい内容を入力…" disabled />}
           </>
