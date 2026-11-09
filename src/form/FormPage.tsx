@@ -45,7 +45,6 @@ interface Props {
 function FormPageInner({ page, state, touch, disabled, batchLabel, dim, glow, petFocus, provisional, adoptingKey, onAdopt, onEditChoice }: Props) {
   const [open, setOpen] = useState('')
   const [diffOpen, setDiffOpen] = useState('')
-  const [reviewSlot, setReviewSlot] = useState('')
   // 様式の画像は非公開の置き場にある（期限つきの URL）。読めなければ 1 回だけ URL を取り直し、それでもだめなら白い紙に欄だけを出す
   const [noImage, setNoImage] = useState(false)
   const { marks, edit, display } = state
@@ -54,18 +53,6 @@ function FormPageInner({ page, state, touch, disabled, batchLabel, dim, glow, pe
   const cell = open ? page.slots.find((s) => s.name === open && s.kind === 'cell') : undefined
   const target = petFocus ? page.slots.find((s) => s.name === petFocus) : undefined
   const freshCls = glow ? 'ov fresh glow' : 'ov fresh'
-
-  // AI が変更した欄は、文字・選択肢のどれでも変更前と現在値を確認できる。
-  // 「変更前に戻す」は既存のslot編集経路を通すため、通常の保存・競合処理がそのまま働く。
-  const compareButton = (s: SlotView) => marks.get(s.name) ? (
-    <button
-      type="button"
-      aria-label={`${s.label}の変更前と変更後を比較`}
-      title="変更前と変更後を比較"
-      onClick={(event) => { event.stopPropagation(); setReviewSlot(s.name) }}
-      style={{ position: 'absolute', zIndex: 10, ...pos(s.x + Math.max(0, s.w - 8), s.y - 3, 8, 4), minWidth: 20, minHeight: 18, padding: '0 3px', border: '1px solid #6B7280', borderRadius: 4, background: '#FFFFFF', color: '#303846', font: 'bold 10px sans-serif', cursor: 'pointer', lineHeight: 1 }}
-    >差分</button>
-  ) : null
 
   const renderMark = (s: SlotView) => {
     const v = display(s.name)
@@ -95,7 +82,6 @@ function FormPageInner({ page, state, touch, disabled, batchLabel, dim, glow, pe
           }}
           style={pos(s.x - pad, s.y - 0.2, s.w + pad * 2, s.h + 0.4)}
         />
-        {compareButton(s)}
       </span>
     )
   }
@@ -116,7 +102,6 @@ function FormPageInner({ page, state, touch, disabled, batchLabel, dim, glow, pe
           onClick={() => (multi ? setOpen(isOpen ? '' : s.name) : edit(s.name, v ? '' : s.cellOptions![0].text))}
           style={box}
         />
-        {compareButton(s)}
       </span>
     )
   }
@@ -124,21 +109,20 @@ function FormPageInner({ page, state, touch, disabled, batchLabel, dim, glow, pe
   const renderText = (s: SlotView) => {
     const m = marks.get(s.name)
     const multi = s.kind === 'area'
-    const d = multi ? state.diffOf(s) : null
+    const d = state.diffOf(s)
     if (d) {
       return (
         <Fragment key={s.name}>
         <div style={{ position: 'absolute', ...pos(s.x, s.y, s.w, s.h), zIndex: diffOpen === s.name ? 8 : 3 }}>
           <DiffField
             before={d.before} after={d.after} ai={d.ai} label={s.label} batch={batchLabel}
-            fontSize={fsz(s.pt)} lineHeight={s.lh} padding="0.4cqw 0.3cqw 0" fill touch={touch} disabled={disabled}
+            fontSize={fsz(s.pt)} lineHeight={multi ? s.lh : 1.15} padding={multi ? '0.4cqw 0.3cqw 0' : '0 0.3cqw'} fill touch={touch} disabled={disabled} singleLine={!multi} textAlign={s.align}
             onChange={(t) => state.setValue(d.key, t === '' ? null : t)}
             onRevert={(t) => state.setValue(d.key, t === '' ? null : t, 'revert')}
             onSaveHunk={(i) => void state.saveHunk(d.key, i)}
             onOpenChange={(o) => setDiffOpen(o ? s.name : '')}
           />
         </div>
-        {compareButton(s)}
         </Fragment>
       )
     }
@@ -163,11 +147,10 @@ function FormPageInner({ page, state, touch, disabled, batchLabel, dim, glow, pe
           style={reason ? { ...style, outline: '1.5px solid #C2410C' } : style}
         />
       )
-    if (!reason) return <span key={s.name}>{field}{compareButton(s)}</span>
+    if (!reason) return field
     return (
       <span key={s.name}>
         {field}
-        {compareButton(s)}
         <span role="alert" style={{
           position: 'absolute', left: pc(s.x, W), top: pc(s.y + s.h + 0.6, H), zIndex: 6, maxWidth: touch ? 320 : 260,
           background: '#FFFFFF', color: '#9A3412', border: '1px solid #FDBA74', borderRadius: 8, padding: touch ? '6px 10px' : '4px 8px',
@@ -183,36 +166,6 @@ function FormPageInner({ page, state, touch, disabled, batchLabel, dim, glow, pe
         ? <div className="pimg" role="img" aria-label={page.title} style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: '4%', color: '#8A919C', fontSize: 12 }}>{image === null && !noImage ? '様式の画像が置き場にありません（npm run forms:assets）' : ''}</div>
         : <img className="pimg" src={image} alt={`${page.title}`} style={dim ? { opacity: 0.55 } : undefined} draggable={false} onError={() => { if (!state.imageFailed()) setNoImage(true) }} />}
       {page.slots.map((s) => (s.kind === 'circle' || s.kind === 'check' ? renderMark(s) : s.kind === 'cell' ? renderCell(s) : renderText(s)))}
-      {reviewSlot && (() => {
-        const slot = page.slots.find((s) => s.name === reviewSlot)
-        if (!slot) return null
-        const before = state.renderedSaved[slot.name] ?? ''
-        const after = state.display(slot.name)
-        return (
-          <div role="presentation" onKeyDown={(event) => { if (event.key === 'Escape') setReviewSlot('') }} onMouseDown={(event) => { if (event.target === event.currentTarget) setReviewSlot('') }} style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'grid', placeItems: 'center', padding: 20, background: 'rgba(16,24,40,0.48)' }}>
-            <section role="dialog" aria-modal="true" aria-labelledby="slot-review-title" style={{ width: 'min(680px, 94vw)', maxHeight: '85vh', overflow: 'auto', background: '#FFFFFF', borderRadius: 14, boxShadow: '0 16px 48px rgba(0,0,0,.28)', padding: touch ? 20 : 16, color: '#1C2229' }}>
-              <header style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-                <strong id="slot-review-title" style={{ fontSize: touch ? 19 : 16 }}>{slot.label}の変更</strong>
-                <button type="button" autoFocus onClick={() => setReviewSlot('')} aria-label="比較を閉じる" style={{ marginLeft: 'auto', border: 0, background: 'transparent', fontSize: 22, cursor: 'pointer' }}>×</button>
-              </header>
-              <div style={{ display: 'grid', gap: 10 }}>
-                <div style={{ border: '1px solid #E5A29D', borderRadius: 8, padding: 12, background: '#FBE3E1' }}>
-                  <strong style={{ display: 'block', color: '#9F2822', marginBottom: 6 }}>変更前</strong>
-                  <div style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: '28vh', overflow: 'auto' }}>{before || <span style={{ color: '#68717D' }}>（空欄）</span>}</div>
-                </div>
-                <div style={{ border: '1px solid #A6D3B5', borderRadius: 8, padding: 12, background: '#E6F5EB' }}>
-                  <strong style={{ display: 'block', color: '#17633A', marginBottom: 6 }}>変更後（現在の値）</strong>
-                  <div style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: '28vh', overflow: 'auto' }}>{after || <span style={{ color: '#68717D' }}>（空欄）</span>}</div>
-                </div>
-              </div>
-              <footer style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap', marginTop: 16 }}>
-                <button type="button" disabled={disabled} onClick={() => { edit(slot.name, before); setReviewSlot('') }} style={{ minHeight: 40, padding: '7px 14px', border: '1px solid #B02A22', borderRadius: 6, background: '#FFFFFF', color: '#9F2822', font: 'inherit', cursor: disabled ? 'default' : 'pointer' }}>変更前に戻す</button>
-                <button type="button" onClick={() => setReviewSlot('')} style={{ minHeight: 40, padding: '7px 14px', border: 0, borderRadius: 6, background: '#17633A', color: '#FFFFFF', font: 'inherit', fontWeight: 700, cursor: 'pointer' }}>変更後を維持</button>
-              </footer>
-            </section>
-          </div>
-        )
-      })()}
       {target && <span className="pc-pet-field-focus" data-slot={target.name} style={pos(target.x, target.y, target.w, target.h)} aria-hidden="true" />}
       {cell && (
         <div role="dialog" aria-label={cell.label} style={{
