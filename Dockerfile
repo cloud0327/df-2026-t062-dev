@@ -30,6 +30,7 @@ COPY --chown=node:node db/ ./db/
 COPY --chown=node:node worker/ ./worker/
 COPY --chown=node:node forms/index.ts ./forms/index.ts
 COPY --chown=node:node forms/templates/ ./forms/templates/
+COPY --chown=node:node forms/seed/ ./forms/seed/
 COPY --chown=node:node forms/scripts/layout.mjs forms/scripts/forms.mjs ./forms/scripts/
 COPY --chown=node:node forms/fonts/ ./forms/fonts/
 # db/seed.ts（demo 環境の見本のデータ）が読む架空の利用者
