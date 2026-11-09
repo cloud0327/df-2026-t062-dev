@@ -89,7 +89,7 @@ npm run dev                                # ターミナル 2: 画面（http://
 
 ### 本物の AI で動かす（費用がかかる）
 
-`gcloud auth application-default login` でログインし、`.env` を次のようにしてから `npm run dev:api` を起動し直します。録音するたびに、文字起こし（Chirp 3、東京）と Gemini（`gemini-3.8-flash`、global）の費用がかかります（30 分の面談で 100〜150 円ほどの見込み）。
+`gcloud auth application-default login` でログインし、`.env` を次のようにしてから `npm run dev:api` を起動し直します。録音するたびに、文字起こし（Chirp 3、us）と Gemini（`gemini-3.8-flash`、global）の費用がかかります（30 分の面談で 100〜150 円ほどの見込み）。
 
 ```sh
 AI_PROVIDER=vertex
@@ -122,7 +122,7 @@ npm run build
 | `GCS_FORMS_BUCKET` | api・`forms:assets` | 様式の元の PDF とページの画像の置き場（非公開。画面には期限つきの URL） |
 | `LOCAL_SIGNING_SECRET` | api（ローカル） | ローカルの期限つきの URL の署名の鍵。なければ起動のたびに作る |
 | `QUEUE_MODE`・`TASKS_QUEUE`・`WORKER_URL`・`TASKS_INVOKER_SA` | api | `tasks` で Cloud Tasks。既定は同じプロセス |
-| `AI_PROVIDER`・`GOOGLE_CLOUD_PROJECT`・`GEMINI_MODEL`・`GEMINI_LOCATION`・`STT_LOCATION` | worker | `vertex` で本物の AI。既定は `fake`。Gemini の既定は `gemini-3.8-flash`（`global`）、文字起こしは東京（`asia-northeast1`） |
+| `AI_PROVIDER`・`GOOGLE_CLOUD_PROJECT`・`GEMINI_MODEL`・`GEMINI_LOCATION`・`STT_LOCATION` | worker | `vertex` で本物の AI。既定は `fake`。Gemini の既定は `gemini-3.8-flash`（`global`）、文字起こしは `us`（Chirp 3 の日本語は東京では使えない） |
 | `GEMINI_THINKING_LEVEL` | worker | Gemini の思考の深さ。既定は `LOW`（`MEDIUM`・`HIGH` にもできる。`DEFAULT` でモデルの既定に任せる）。3.8 Flash は `MINIMAL` を受け付けない |
 
 ## CI/CD
@@ -148,7 +148,7 @@ PR と `main` で、型チェック、様式の確かめ、テスト（PostgreSQ
 ## 個人情報の扱い
 
 - このリポジトリは公開です。入っているのは、公開の演習シナリオ（山梨県介護支援専門員協会の演習用 PDF を写したもの）と、架空の見本データだけです。
-- 録音・文字起こし・用紙の値は、Google Cloud の東京リージョン（Cloud SQL・Cloud Storage）に置きます。ログには中身を出しません（ジョブの id・段・時間・誤りの種類・使った量だけ）。
+- 録音・文字起こし・用紙の値は、Google Cloud の東京リージョン（Cloud SQL・Cloud Storage）に置きます。文字起こし（Speech-to-Text の Chirp 3）は `us` の呼び先で処理します。Chirp 3 の日本語は東京では断られるようになり、使えるのは us・eu だけのためです（2026-11-10）。音声は東京の置き場から読まれ、結果は東京の DB に入ります。ログには中身を出しません（ジョブの id・段・時間・誤りの種類・使った量だけ）。
 - 用紙を書く Gemini（Vertex AI）は `global` の呼び先で使います。東京で使える Gemini は 3.5 Flash だけで、新しく安い 3.8 Flash は global・us・eu だけのためです。Google は、東京などの地域の呼び先でも global でも、その地域の中で処理することを保証していません（保証するのは us・eu の呼び先だけ）。Vertex AI に送ったデータは、モデルの学習には使われません。
 - 誰が、いつ、直した・保存した・PDF を出したかを `audit_events` に残します。
 
