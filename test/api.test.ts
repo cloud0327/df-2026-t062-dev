@@ -21,6 +21,8 @@ let hasPdf = false
 let putFake: (path: string, data: Uint8Array) => Promise<void> = async () => {}
 const TOKEN = 'Bearer dev:kato@example.com'
 const OTHER = 'Bearer dev:other@example.com'
+let failNextEnqueue = false
+const enqueues = new Map<string, number>()
 
 const call = async (path: string, init: RequestInit & { token?: string } = {}) => {
   const res = await fetch(`${origin}${path}`, {
@@ -69,11 +71,21 @@ before(async () => {
   }
   putFake = async (path, data) => { await storage.writeOnce('forms', path, data, 'image/png') }
   const workerDeps = { db: async () => db, storage: () => storage, providers: async () => ({ stt: new f.FakeStt(), speakers: new f.FakeSpeakers(), writer: new f.FakeWriter() }) }
+  const queue = new LocalQueue((id) => runJob(workerDeps, id))
   const server = createApiServer({
     db: async () => db,
     verifier: () => new DevVerifier(),
     storage: () => storage,
-    queue: () => new LocalQueue((id) => runJob(workerDeps, id)),
+    queue: () => ({
+      async enqueue(id) {
+        if (failNextEnqueue) {
+          failNextEnqueue = false
+          throw new Error('queue unavailable')
+        }
+        enqueues.set(id, (enqueues.get(id) ?? 0) + 1)
+        await queue.enqueue(id)
+      },
+    }),
     devAuth: true,
   })
   server.listen(0, '127.0.0.1')
@@ -142,6 +154,42 @@ test('入院時情報提供書を作るとアセスメントから写し、基�
   assert.deepEqual((p.body as { syncedTo: string[] }).syncedTo, ['アセスメント'])
 })
 
+test('元書類の変更を比較し、維持と反映を欄ごとに記録する', { skip }, async () => {
+  const made = await call('/api/clients', { method: 'POST', body: JSON.stringify({ name: '差異確認の見本' }) })
+  assert.equal(made.status, 201)
+  const { id: clientId, assessmentId } = made.body as { id: string, assessmentId: string }
+  const patch = (id: string, value: unknown, base: unknown) => call(`/api/documents/${id}/fields`, {
+    method: 'PATCH', body: JSON.stringify({ changes: [{ key: 'person.lifeHistory', value, base }] }),
+  })
+  assert.equal((await patch(assessmentId, '最初の記載', null)).status, 200)
+  assert.equal((await call(`/api/documents/${assessmentId}/save`, { method: 'POST', body: JSON.stringify({ scope: 'document' }) })).status, 200)
+  const admission = await call(`/api/clients/${clientId}/documents`, { method: 'POST', body: JSON.stringify({ form: 'admission' }) })
+  assert.equal(admission.status, 201)
+  const targetId = (admission.body as { id: string }).id
+  const getDiff = async () => (await call(`/api/documents/${targetId}/sync-differences`)).body as { differences: { key: string, source: unknown, target: unknown, status: string }[] }
+  assert.equal((await getDiff()).differences.length, 0)
+
+  assert.equal((await patch(assessmentId, '新しい記載', '最初の記載')).status, 200)
+  assert.equal((await getDiff()).differences.find((d) => d.key === 'person.lifeHistory')?.status, 'pending')
+  assert.equal((await call(`/api/documents/${assessmentId}/save`, { method: 'POST', body: JSON.stringify({ scope: 'document' }) })).status, 200)
+  const diff = (await getDiff()).differences.find((d) => d.key === 'person.lifeHistory')!
+  assert.equal(diff.status, 'review')
+  assert.equal((await call(`/api/documents/${targetId}/sync-decisions`, { method: 'POST', token: OTHER, body: JSON.stringify({ key: diff.key, decision: 'apply', source: diff.source, target: diff.target }) })).status, 404)
+  assert.equal((await call(`/api/documents/${targetId}/sync-decisions`, { method: 'POST', body: JSON.stringify({ key: diff.key, decision: 'keep', source: diff.source, target: diff.target }) })).status, 200)
+  assert.equal((await getDiff()).differences.find((d) => d.key === diff.key)?.status, 'different')
+
+  assert.equal((await patch(assessmentId, 'さらに新しい記載', '新しい記載')).status, 200)
+  assert.equal((await call(`/api/documents/${assessmentId}/save`, { method: 'POST', body: JSON.stringify({ scope: 'document' }) })).status, 200)
+  const next = (await getDiff()).differences.find((d) => d.key === diff.key)!
+  assert.equal(next.status, 'review')
+  assert.equal((await call(`/api/documents/${targetId}/sync-decisions`, { method: 'POST', body: JSON.stringify({ key: next.key, decision: 'apply', source: diff.source, target: next.target }) })).status, 409)
+  assert.equal((await call(`/api/documents/${targetId}/sync-decisions`, { method: 'POST', body: JSON.stringify({ key: next.key, decision: 'apply', source: next.source, target: next.target }) })).status, 200)
+  assert.equal((await getDiff()).differences.length, 0)
+  const target = (await call(`/api/documents/${targetId}`)).body as Doc
+  assert.equal(target.document.fields['person.lifeHistory'].value, 'さらに新しい記載')
+  assert.equal(target.document.saved['person.lifeHistory'], undefined)
+})
+
 test('録音を送るとジョブが走り、AI が用紙に書く（ケアマネが直した欄は残す）', { skip }, async () => {
   const { id: docId } = await docOf(ids.sato)
   const before = await call(`/api/documents/${docId}/fields`, { method: 'PATCH', body: JSON.stringify({ changes: [{ key: 'consulter', value: { name: '自分で書いた', relationship: '子' }, base: null }] }) })
@@ -167,6 +215,57 @@ test('録音を送るとジョブが走り、AI が用紙に書く（ケアマ�
   const doc = (await call(`/api/documents/${docId}`)).body as { document: { fields: Record<string, { value: { name?: string }, by: string }> } }
   assert.equal(doc.document.fields.consulter.value.name, '自分で書いた')
   assert.equal(doc.document.fields['intake.method'].by, 'ai')
+})
+
+test('録音IDで送信を再開し、同時に完了を再試行してもジョブを一度だけ積む', { skip }, async () => {
+  const client = await call('/api/clients', { method: 'POST', body: JSON.stringify({ name: '録音復旧の検証' }) })
+  assert.equal(client.status, 201)
+  const path = `/api/clients/${client.body.id}/recordings/resumable`
+  const deviceRecordingId = crypto.randomUUID()
+  const start = (expiredUploadUrl?: string, token = TOKEN) => call(path, {
+    method: 'POST', token, body: JSON.stringify({ mime: 'audio/webm', deviceRecordingId, expiredUploadUrl }),
+  })
+  const [first, retry] = await Promise.all([start(), start()])
+  assert.equal(first.status, 201)
+  assert.equal(retry.status, 201)
+  assert.deepEqual(retry.body, first.body)
+  assert.equal((await start(undefined, OTHER)).status, 404)
+  const { recordingId, uploadUrl } = first.body as { recordingId: string, uploadUrl: string }
+  const put = (url: string, range: string, data?: Uint8Array<ArrayBuffer>) =>
+    fetch(`${origin}${url}`, { method: 'PUT', headers: { 'Content-Range': range }, body: data, redirect: 'manual' })
+  const complete = (bytes = 4) => call(`/api/recordings/${recordingId}/complete`, {
+    method: 'POST', body: JSON.stringify({ durationMs: 1000, bytes }),
+  })
+
+  assert.equal((await put(uploadUrl, 'bytes 0-1/4', new Uint8Array([1, 2]))).status, 308)
+  assert.equal((await complete()).status, 409)
+  assert.equal((await put(uploadUrl, 'bytes */4')).headers.get('Range'), 'bytes=0-1')
+  const renewed = await start(uploadUrl)
+  assert.equal(renewed.status, 201)
+  assert.equal(renewed.body.recordingId, recordingId)
+  assert.notEqual(renewed.body.uploadUrl, uploadUrl)
+  assert.deepEqual((await start(uploadUrl)).body, renewed.body)
+  assert.equal((await put(renewed.body.uploadUrl, 'bytes 0-3/4', new Uint8Array([1, 2, 3, 4]))).status, 200)
+  assert.equal((await put(uploadUrl, 'bytes 2-3/4', new Uint8Array([9, 9]))).status, 200)
+  assert.deepEqual((await start()).body, { recordingId, uploadUrl: null })
+  assert.equal((await complete(5)).status, 409)
+
+  failNextEnqueue = true
+  assert.equal((await complete()).status, 500)
+  const [done, repeated] = await Promise.all([complete(), complete()])
+  assert.equal(done.status, 202)
+  assert.equal(repeated.status, 202)
+  assert.equal(repeated.body.jobId, done.body.jobId)
+  assert.equal(enqueues.get(done.body.jobId), 1)
+  const list = await call(`/api/clients/${client.body.id}/jobs`)
+  assert.equal(list.body.jobs.length, 1)
+  assert.deepEqual((await start()).body, { recordingId, uploadUrl: null })
+  for (let i = 0; i < 50; i++) {
+    const jobs = (await call(`/api/clients/${client.body.id}/jobs`)).body.jobs
+    if (jobs[0].status === 'succeeded') return
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  assert.fail('再試行で投入したジョブが完了しませんでした')
 })
 
 test('様式の版は、その事業所が見てよいものだけ読める。中身はブラウザが覚えてよい（ETag）', { skip }, async () => {

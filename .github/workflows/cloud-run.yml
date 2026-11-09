@@ -107,7 +107,7 @@ jobs:
         env:
           IMAGE_BY_DIGEST: ${{ steps.image.outputs.ref }}
         run: bash scripts/release-cloud-run.sh migrate
-      # 2. worker に同じイメージを入れ、/healthz を確かめる。失敗したら前のリビジョンに戻して止まる
+      # 2. worker に同じイメージを入れ、/health を確かめる。失敗したら前のリビジョンに戻して止まる
       - name: Deploy worker
         id: worker
         env:
