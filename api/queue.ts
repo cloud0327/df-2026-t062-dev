@@ -21,7 +21,7 @@ export class CloudTasksQueue implements Queue {
     await client.createTask({
       parent: TASKS_QUEUE,
       task: {
-        // 同じジョブを 2 回積まない（名前が同じなら Cloud Tasks が断る）
+        // 再配信・見回りでは複数タスクになりうる。DB の実行トークンで一つだけ取得する。
         name: `${TASKS_QUEUE}/tasks/job-${jobId}-${Date.now().toString(36)}`,
         dispatchDeadline: { seconds: 1800 },
         httpRequest: {

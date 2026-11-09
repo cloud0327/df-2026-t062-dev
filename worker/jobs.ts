@@ -2,6 +2,7 @@
 // 段ごとに結果を jobs.steps に残し、やり直しでは済んだ段を飛ばす（STT と Gemini の費用を 2 回払わない）。
 // ログには中身（話・値）を出さない。出すのは、ジョブの id・段・時間・エラーの種類・使った量だけ。
 import { normalizeValue } from '../core/normalize.ts'
+import { randomUUID } from 'node:crypto'
 import { validValue } from '../core/schema.ts'
 import type { Db } from '../db/pool.ts'
 import { applyBatch } from '../db/repo.ts'
@@ -16,11 +17,15 @@ export interface WorkerDeps {
 
 const log = (rec: Record<string, unknown>) => console.log(JSON.stringify({ severity: 'INFO', ...rec }))
 
-async function setStep(db: Db, jobId: string, step: string, patch: Record<string, unknown> = {}) {
-  await db.query(
-    "UPDATE jobs SET step = $2, steps = steps || $3::jsonb, updated_at = now(), lease_until = now() + interval '30 minutes' WHERE id = $1",
-    [jobId, step, JSON.stringify(patch)],
+const MAX_ATTEMPTS = 3
+class LeaseLost extends Error { constructor() { super('job lease lost') } }
+
+async function setStep(db: Db, jobId: string, token: string, step: string, patch: Record<string, unknown> = {}) {
+  const r = await db.query(
+    "UPDATE jobs SET step = $3, steps = steps || $4::jsonb, updated_at = now(), lease_until = now() + interval '30 minutes' WHERE id = $1 AND run_token = $2 AND status = 'processing' AND lease_until > now() RETURNING id",
+    [jobId, token, step, JSON.stringify(patch)],
   )
+  if (!r.rows.length) throw new LeaseLost()
 }
 
 const md = (d: Date) => `${d.getMonth() + 1}/${d.getDate()}`
@@ -29,14 +34,16 @@ const ymd = (d: Date) => new Date(d.getTime() + 9 * 3600 * 1000).toISOString().s
 
 export async function runJob(deps: WorkerDeps, jobId: string): Promise<void> {
   const db = await deps.db()
+  const token = randomUUID()
   // 始める印を付ける（期限つき）。同じジョブが 2 回届いても、2 つ目は何もしない
   let job
   try {
     job = (await db.query(
-      `UPDATE jobs SET status = 'processing', attempts = attempts + 1, lease_until = now() + interval '30 minutes', updated_at = now()
-       WHERE id = $1 AND (status = 'queued' OR (status = 'processing' AND lease_until < now()))
-       RETURNING id, office_id, client_id, document_id, recording_id, steps`,
-      [jobId],
+      `UPDATE jobs SET status = 'processing', attempts = attempts + 1, run_token = $2,
+         lease_until = now() + interval '30 minutes', updated_at = now()
+       WHERE id = $1 AND attempts < $3 AND (status = 'queued' OR (status = 'processing' AND lease_until < now()))
+       RETURNING id, office_id, client_id, document_id, recording_id, steps, attempts`,
+      [jobId, token, MAX_ATTEMPTS],
     )).rows[0]
   } catch (e) {
     // 同じ書類で別のジョブが処理中（一意の索引）。見回りがあとで積み直す
@@ -45,9 +52,15 @@ export async function runJob(deps: WorkerDeps, jobId: string): Promise<void> {
   }
   if (!job) return log({ msg: 'job already taken or done', jobId })
   const steps = (job.steps ?? {}) as Record<string, Record<string, unknown>>
-  const providers = await deps.providers()
   const t0 = Date.now()
+  // 長い STT・Gemini 呼び出し中にも lease を延長する。古い実行の更新は token で拒否する。
+  const heartbeat = setInterval(() => {
+    void db.query("UPDATE jobs SET lease_until = now() + interval '30 minutes' WHERE id = $1 AND run_token = $2 AND status = 'processing' AND lease_until > now()", [jobId, token])
+      .catch((e) => log({ msg: 'lease heartbeat failed', jobId, error: (e as Error).name }))
+  }, 60_000)
+  heartbeat.unref()
   try {
+    const providers = await deps.providers()
     const rec = (await db.query('SELECT id, object_path, mime, recorded_at FROM recordings WHERE id = $1', [job.recording_id])).rows[0]
     const sequence = Number((await db.query(
       // 時刻は JS の Date にするとマイクロ秒が落ちるので、DB の中で比べる
@@ -60,25 +73,25 @@ export async function runJob(deps: WorkerDeps, jobId: string): Promise<void> {
     const existing = (await db.query('SELECT utterances FROM transcripts WHERE recording_id = $1', [rec.id])).rows[0]
     if (existing) utterances = existing.utterances
     else {
-      await setStep(db, jobId, 'transcribe')
+      await setStep(db, jobId, token, 'transcribe')
       const s0 = Date.now()
       const stt = await providers.stt.transcribe({
         uri: deps.storage().uri('source', rec.object_path), mime: rec.mime, recordingId: rec.id, sequence,
         resumeOperation: steps.transcribe?.operation as string | undefined,
-        onOperation: (name) => setStep(db, jobId, 'transcribe', { transcribe: { operation: name } }),
+        onOperation: (name) => setStep(db, jobId, token, 'transcribe', { transcribe: { operation: name } }),
       })
       utterances = stt.utterances
       await db.query(
         'INSERT INTO transcripts (recording_id, office_id, client_id, utterances, model) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (recording_id) DO NOTHING',
         [rec.id, job.office_id, job.client_id, JSON.stringify(utterances), stt.model],
       )
-      await setStep(db, jobId, 'transcribe', { transcribe: { seconds: (Date.now() - s0) / 1000, utterances: utterances.length, audioSeconds: stt.audioSeconds ?? null, model: stt.model } })
+      await setStep(db, jobId, token, 'transcribe', { transcribe: { seconds: (Date.now() - s0) / 1000, utterances: utterances.length, audioSeconds: stt.audioSeconds ?? null, model: stt.model } })
     }
 
     // ② 話した人を決める
     const people: Person[] = (await db.query('SELECT label, role, relation FROM people WHERE client_id = $1', [job.client_id])).rows
     if (!steps.speakers) {
-      await setStep(db, jobId, 'speakers')
+      await setStep(db, jobId, token, 'speakers')
       const r = await providers.speakers.assign({ utterances, people })
       for (const p of r.newPeople) {
         await db.query('INSERT INTO people (office_id, client_id, label, role, relation) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (client_id, label) DO NOTHING', [job.office_id, job.client_id, p.label, p.role, p.relation ?? null])
@@ -86,11 +99,11 @@ export async function runJob(deps: WorkerDeps, jobId: string): Promise<void> {
       }
       utterances = utterances.map((u) => ({ ...u, person: u.person ?? r.map[u.speaker] ?? null }))
       await db.query('UPDATE transcripts SET utterances = $2, speakers = $3 WHERE recording_id = $1', [rec.id, JSON.stringify(utterances), JSON.stringify(r.map)])
-      await setStep(db, jobId, 'speakers', { speakers: { people: people.length, usage: r.usage } })
+      await setStep(db, jobId, token, 'speakers', { speakers: { people: people.length, usage: r.usage } })
     }
 
     // ③ 2 層改で欄の値を作る（記録は、この利用者の録音の全部）
-    await setStep(db, jobId, 'write')
+    await setStep(db, jobId, token, 'write')
     const all = (await db.query(
       `SELECT r.id, r.recorded_at, t.utterances FROM recordings r JOIN transcripts t ON t.recording_id = r.id
        WHERE r.client_id = $1 AND r.recorded_at <= (SELECT recorded_at FROM recordings WHERE id = $2) ORDER BY r.recorded_at`,
@@ -117,38 +130,41 @@ export async function runJob(deps: WorkerDeps, jobId: string): Promise<void> {
       if (validValue(k, value, { strictDates: true })) proposed[k] = { ...v, value }
       else dropped++
     }
-    await setStep(db, jobId, 'write', { write: { seconds: (Date.now() - w0) / 1000, values: Object.keys(proposed).length, dropped, failed: written.failed, usage: written.usage satisfies Usage, first } })
+    await setStep(db, jobId, token, 'write', { write: { seconds: (Date.now() - w0) / 1000, values: Object.keys(proposed).length, dropped, failed: written.failed, usage: written.usage satisfies Usage, first } })
 
     // ⑤ 用紙に反映する（書類の行を止めるのは、ここの数秒だけ）
-    await setStep(db, jobId, 'apply')
+    await setStep(db, jobId, token, 'apply')
     const n = Number((await db.query("SELECT count(*) AS n FROM batches WHERE document_id = $1 AND kind = 'recording'", [job.document_id])).rows[0].n) + 1
-    const { batchId, plan } = await applyBatch(db, {
+    const status = written.failed.length || dropped ? 'partial' : 'succeeded'
+    const { plan } = await applyBatch(db, {
       officeId: job.office_id, documentId: job.document_id, kind: 'recording', jobId,
       label: `AI 書き込み ${n}・${md(new Date(rec.recorded_at))} の録音`, proposed,
-      // 1 回目の録音の日を、アセスメント実施日（初回）にする。2 回目からは更新の日
       system: first ? (current['assessment.initialDate'] ? {} : { 'assessment.initialDate': ymd(new Date(rec.recorded_at)) }) : { 'assessment.updateDate': ymd(new Date(rec.recorded_at)) },
+      completion: { token, status, steps: { totalSeconds: (Date.now() - t0) / 1000 } },
     })
-    const status = written.failed.length ? 'partial' : 'succeeded'
-    await db.query(
-      "UPDATE jobs SET status = $2, step = 'done', batch_id = $3, steps = steps || $4::jsonb, lease_until = NULL, updated_at = now() WHERE id = $1",
-      [jobId, status, batchId, JSON.stringify({ apply: { changes: plan.changes.length, kept: plan.kept.length }, totalSeconds: (Date.now() - t0) / 1000 })],
-    )
     log({ msg: 'job done', jobId, status, seconds: (Date.now() - t0) / 1000, changes: plan.changes.length, kept: plan.kept.length })
   } catch (e) {
     const kind = (e as Error)?.name ?? 'Error'
     // 誤りの番号（gRPC・HTTP の状態の番号）だけを足す。文面は中身が入りうるので出さない
     const code = typeof (e as { code?: unknown })?.code === 'number' ? (e as { code: number }).code : null
-    await db.query("UPDATE jobs SET status = 'failed', error_kind = $2, lease_until = NULL, updated_at = now() WHERE id = $1", [jobId, code === null ? kind : `${kind}:${code}`])
+    const terminal = job.attempts >= MAX_ATTEMPTS
+    await db.query("UPDATE jobs SET status = $3, error_kind = $4, lease_until = NULL, run_token = NULL, updated_at = now() WHERE id = $1 AND run_token = $2", [jobId, token, terminal ? 'failed' : 'queued', code === null ? kind : `${kind}:${code}`])
     console.error(JSON.stringify({ severity: 'ERROR', msg: 'job failed', jobId, error: kind, code }))
     // 中身が入りうるので、ローカルで調べるときだけ出す
     if (process.env.DEBUG_JOBS) console.error(e)
     throw e
+  } finally {
+    clearInterval(heartbeat)
   }
 }
 
 /** 見回り: 積み損ね・止まった処理・待たされたジョブを積み直す（Cloud Scheduler が 5 分ごとに呼ぶ） */
 export async function reconcile(deps: WorkerDeps, enqueue: (jobId: string) => Promise<void>): Promise<number> {
   const db = await deps.db()
+  await db.query(
+    "UPDATE jobs SET status = 'failed', lease_until = NULL, run_token = NULL, error_kind = coalesce(error_kind, 'AttemptsExhausted'), updated_at = now() WHERE attempts >= $1 AND (status = 'queued' OR (status = 'processing' AND lease_until < now()))",
+    [MAX_ATTEMPTS],
+  )
   const r = await db.query(
     `SELECT id FROM jobs
      WHERE (status = 'queued' AND updated_at < now() - interval '2 minutes')

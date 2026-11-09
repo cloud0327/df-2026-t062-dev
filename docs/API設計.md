@@ -21,7 +21,7 @@
 | `GET /api/documents/:id/pdf` | 最新の版から、その版の様式の元の PDF で PDF を作る。出力の置き場にも残す。元の PDF が置き場になければ 503 | `application/pdf` |
 | `POST /api/clients/:id/recordings` | 録音を始める（`{mime}`）。Cloud Storage の再開できる送信の URL を返す | `201 {recordingId, uploadUrl}` |
 | `POST /api/recordings/:id/complete` | 送り終わり（`{durationMs}`）。置き場にあるのを確かめてジョブを積む | `202 {jobId, status}` |
-| `GET /api/clients/:id/jobs` | 処理の状態（処理中と、終わって 15 分以内） | `{jobs:[{status, step, etaSeconds, batch:{changes, kept}}]}` |
+| `GET /api/clients/:id/jobs` | 処理中・終わって15分以内・最後のジョブ。`partial` は失敗した項目と形式不一致の件数を後日も表示する | `{jobs:[{status, step, etaSeconds, batch:{changes, kept}, failedGroups, droppedValues, errorKind}]}` |
 | `PUT /api/dev-upload/:token` | ローカルの置き場だけ。Cloud Storage と同じ約束（Content-Range、途中は 308） | — |
 | `GET /api/dev-files/forms/*?from=&until=&sig=` | ローカルの置き場だけ。期限つきの URL（署名つき URL と同じ約束。署名が違う・期限の外なら 403） | 画像・PDF |
 

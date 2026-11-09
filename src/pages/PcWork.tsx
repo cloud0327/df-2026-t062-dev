@@ -6,13 +6,14 @@ import { useClient } from '../form/useClient.ts'
 import { useDocument } from '../form/useDocument.ts'
 import { api } from '../lib/api.ts'
 import { linkProps } from '../lib/router.tsx'
+import { failedTopicNames } from '../lib/jobStatus.ts'
 import { PetHelper } from '../components/PetHelper.tsx'
 import { PcHeader, countText, downloadBlob } from '../components/Chrome.tsx'
 
 export function PcWork({ clientId, staffName }: { clientId: string, staffName: string }) {
   const [tab, setTab] = useState<'assessment' | 'admission'>('assessment')
   const reloadDoc = useRef<() => void>(() => {})
-  const { client, reload: reloadClient } = useClient(clientId, () => reloadDoc.current())
+  const { client, jobs, reload: reloadClient } = useClient(clientId, () => reloadDoc.current())
   const docId = client?.documents.find((d) => d.kind === tab)?.id
   const state = useDocument(docId)
   reloadDoc.current = () => { void state.reload(); void reloadClient() }
@@ -46,6 +47,7 @@ export function PcWork({ clientId, staffName }: { clientId: string, staffName: s
   const empty = !!doc && !doc.batches.length && Object.keys(doc.fields).every((k) => k === 'person.name' || k === 'person.sex')
   const hasUpdates = state.updates.size > 0
   const copied = doc?.batches.find((b) => b.kind === 'copy')?.changes ?? 0
+  const incomplete = !isAdm && (jobs[0]?.status === 'partial' || jobs[0]?.status === 'failed') ? jobs[0] : null
 
   const onScroll = () => {
     const el = scroller.current
@@ -153,6 +155,9 @@ export function PcWork({ clientId, staffName }: { clientId: string, staffName: s
           </div>
 
           <div ref={scroller} onScroll={onScroll} style={{ flex: '1 1 auto', minHeight: 0, overflow: 'auto', background: '#E9EBEF', padding: '10px 21px 20px' }}>
+            {incomplete && <div role="alert" style={{ margin: '0 auto 12px', maxWidth: maxW, padding: '10px 14px', background: '#FFF4E5', border: '1px solid #F0C78A', borderRadius: 8, fontSize: 13 }}>
+              {incomplete.status === 'partial' ? `AI 処理の一部を完了できませんでした。${incomplete.failedGroups.length ? `確認が必要な項目: ${failedTopicNames(incomplete.failedGroups).join('、')}。` : ''}${incomplete.droppedValues ? `形式が合わず書かなかった値 ${incomplete.droppedValues} 件。` : ''}用紙を確認してください。` : 'AI 処理を完了できませんでした。録音は保存されています。担当者に確認してください。'}
+            </div>}
             {state.error && <div role="alert" style={{ margin: `0 auto 12px`, maxWidth: maxW, color: '#A3261C', fontSize: 13 }}>うまく送れませんでした（{state.error}）。少し待ってから、もう一度直してください。</div>}
             {isAdm && doc && (
               <div style={{ margin: '0 auto 14px', maxWidth: maxW }}>
