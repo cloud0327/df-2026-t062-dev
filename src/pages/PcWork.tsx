@@ -1,6 +1,7 @@
 // PC ② 作業画面（キャンバス Main）。新しい利用者は ③（PcNew）、2 回目からの書き換えのあとは ④（PcDiff）の印になる。
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { countRequired } from '../../core/required.ts'
+import { FieldConflicts } from '../form/FieldConflicts.tsx'
 import { FormPage } from '../form/FormPage.tsx'
 import { useClient } from '../form/useClient.ts'
 import { useDocument } from '../form/useDocument.ts'
@@ -75,7 +76,7 @@ export function PcWork({ clientId, staffName }: { clientId: string, staffName: s
         <span>{isAdm ? title : `${no} ・ ${title}`}</span>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 11, color: '#5B6672' }}>{dirty ? countText(c) : savedPages.has(no) ? '保存しました' : i === 0 && empty ? 'まだ何も書かれていません' : ''}</span>
-          <button type="button" className="pgsave" disabled={!dirty} onClick={async () => { if (await state.savePage(no)) setSavedPages((s) => new Set(s).add(no)) }} style={dirty ? undefined : { opacity: 0.35, cursor: 'default' }}>このページを保存</button>
+          <button type="button" className="pgsave" disabled={!dirty} onClick={async () => { if (!await state.savePage(no)) return; setSavedPages((s) => new Set(s).add(no)) }} style={dirty ? undefined : { opacity: 0.35, cursor: 'default' }}>このページを保存</button>
         </span>
       </div>
     )
@@ -152,6 +153,7 @@ export function PcWork({ clientId, staffName }: { clientId: string, staffName: s
             </div>
           </div>
 
+          <FieldConflicts state={state} />
           <div ref={scroller} onScroll={onScroll} style={{ flex: '1 1 auto', minHeight: 0, overflow: 'auto', background: '#E9EBEF', padding: '10px 21px 20px' }}>
             {state.error && <div role="alert" style={{ margin: `0 auto 12px`, maxWidth: maxW, color: '#A3261C', fontSize: 13 }}>うまく送れませんでした（{state.error}）。少し待ってから、もう一度直してください。</div>}
             {isAdm && doc && (
