@@ -36,13 +36,20 @@
 | `batches` | 書き込み | `kind`（`recording`／`copy`／`seed`）、`label`（「AI 書き込み 2・1/25 の録音」など）、`changes`（key・op・before・after）、`kept`（書き換えなかったケアマネの欄） |
 | `recordings` | 録音（原本の音声） | `object_path`（Cloud Storage の場所）、`mime`、`bytes`、`duration_ms`、`status` |
 | `transcripts` | 文字起こし（原本の文字） | `utterances`（id・時刻・話者の記号・人・文）、`speakers`、`model` |
-| `jobs` | 録音 1 本の処理 | `status`（queued／processing／succeeded／partial／failed）、`step`（transcribe／speakers／write／apply）、`steps`（段ごとの結果・時間・トークン・円）、`lease_until`、`batch_id`。録音 1 つに 1 つ、同じ書類で処理中は 1 つだけ |
+| `jobs` | 録音 1 本の処理 | `status`（queued／processing／succeeded／partial／failed）、`step`（transcribe／speakers／write／apply）、`steps`（段ごとの結果・時間・トークン・円）、`lease_until`、`run_token`、`attempts`、`error_kind`、`batch_id`。録音 1 つに 1 つ、同じ書類で処理中は 1 つだけ |
 | `exports` | 出した PDF | `revision_rev`、`template_version_id`、`object_path` |
 | `audit_events` | 操作の記録（追記だけ） | `action`（client.create／document.edit／document.save／document.pdf／recording.start／form.rebase など）、`detail`（数だけ。欄の値や話の中身は入れない。form.rebase は移した版の番号と中身の指紋） |
 
 ### 書類間の差異
 
 入院時情報提供書を作るときにアセスメントの値を写す。`shared` 以外の欄はその後独立する。両方の様式の版が読む `key` の共通部分を比較し、`shared` は除く。最初の確認済み値は作成時の `copy` バッチの `after`（写していない空欄は NULL）を使う。判断後は `document_sync_reviews` の元書類の値を更新する。元書類の現在値が保存済み値と違う間は差異を表示するが反映・維持を受け付けない。反映は対象書類の今の値だけを変え、保存済み版と PDF は「書類を保存」するまで変わらない。監査記録には判断と欄の `key` だけを残し、値は入れない。
+
+## 録音ジョブの失敗と再配信
+
+- 一時的な例外では `queued` に戻して Cloud Tasks の再配信または 5 分ごとの見回りで再開する。3 回失敗したら `failed` とし、それ以上は自動実行しない。
+- Worker が取得するたび `run_token` を発行する。段階の更新と完了時に照合し、リースを失った古い実行を拒む。処理中は定期的にリースを延長する。
+- 録音の `applyBatch` とジョブの `succeeded`／`partial` への更新は同じトランザクションで行う。`batches.job_id` は録音処理で一意。反映直後に通信が切れても、次の配信で同じ変更を重ねない。
+- `partial` は確定済みの結果であり、自動再配信しない。AI が処理できなかった欄と形式不一致で反映できなかった欄の key を `jobs.steps.write.incompleteFields` に保存し、ジョブ API に出す。PDF プレビューでは該当欄を赤枠で示す。失敗項目だけを補完する別ジョブは作らず、担当者が録音し直す。
 
 ## 保存の 3 段
 
