@@ -61,12 +61,14 @@
   text-align: left; background: var(--pet-card); border: 1px solid var(--pet-line);
   border-radius: 16px; box-shadow: var(--pet-shadow);
 }
-.assistant-card:hover, .assistant-header button:hover { border-color: #bda7e8; background: #f5efff; }
+button.assistant-card:hover, .assistant-header button:hover { border-color: #bda7e8; background: #f5efff; }
 .assistant-card > .assistant-icon:first-child, .assistant-icon-tile { color: var(--pet-purple); font-size: 33px; }
 .assistant-card > .assistant-icon:last-child { font-size: 18px; }
-.assistant-card strong, .assistant-file-card strong { display: block; font-size: 19px; line-height: 1.4; font-weight: 800; }
+.assistant-card strong, .assistant-file-card strong, .assistant-topic h3 { display: block; font-size: 19px; line-height: 1.4; font-weight: 800; }
 .assistant-card small, .assistant-file-card small { display: block; font-size: 14px; line-height: 1.45; }
+.assistant-topic { grid-template-columns: auto minmax(0, 1fr); }
 .assistant-topic > .assistant-icon:first-child { margin-inline: 4px 6px; }
+.assistant-topic h3 { margin: 0; }
 .assistant-topic small { margin-top: 3px; font-size: 13px; }
 .assistant-menu .assistant-card { min-height: 89px; padding: 13px clamp(12px, 8cqw, 33px); gap: 21px; background: #fff; }
 .assistant-menu .assistant-card:first-child { border-color: #9a58e7; box-shadow: inset 0 0 0 1px #9a58e7, var(--pet-shadow); background: #f4edff; }

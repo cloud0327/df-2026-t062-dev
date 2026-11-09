@@ -27,7 +27,6 @@ interface Props {
 export function PetHelper({ available, clientName, review, topics, onJump, onPreview, onIdentity, verifiedSources }: Props) {
   const [menu, setMenu] = useState<Menu | null>(null)
   const [confirmed, setConfirmed] = useState(false)
-  const [expanded, setExpanded] = useState('')
   const [error, setError] = useState('')
   const body = useRef<HTMLDivElement>(null)
   const back = useRef<HTMLButtonElement>(null)
@@ -45,7 +44,6 @@ export function PetHelper({ available, clientName, review, topics, onJump, onPre
     if (menu) previousMenu.current = menu
     setMenu(next)
     setError('')
-    setExpanded('')
     setConfirmed(false)
   }
   const jump = (key: string) => setError(onJump(key) ? '' : '用紙に対応する入力欄が見つかりませんでした。')
@@ -99,19 +97,12 @@ export function PetHelper({ available, clientName, review, topics, onJump, onPre
             <ul className="assistant-stack">
               {topics.map(({ title, icon, description, keys }) => (
                 <li key={title}>
-                  <button type="button" className="assistant-card assistant-topic" aria-expanded={keys.length > 1 ? expanded === title : undefined}
-                    onClick={() => {
-                      if (keys.length === 1) jump(keys[0])
-                      else if (expanded === title) setExpanded('')
-                      else { setExpanded(title); jump(keys[0]) }
-                    }}>
-                    <PetIcon name={icon} /><span><strong>{title}</strong><small>{description}</small></span><PetIcon name="chevron-right" />
-                  </button>
-                  {expanded === title && keys.length > 1 && (
-                    <ul className="assistant-topic-targets" aria-label={`${title}の入力欄`}>
-                      {keys.map((key) => <li key={key}><button type="button" onClick={() => jump(key)}>{fieldLabel(key)}<PetIcon name="chevron-right" /></button></li>)}
-                    </ul>
-                  )}
+                  <div className="assistant-card assistant-topic">
+                    <PetIcon name={icon} /><div><h3>{title}</h3><small>{description}</small></div>
+                  </div>
+                  <ul className="assistant-topic-targets" aria-label={`${title}の入力欄`}>
+                    {keys.map((key) => <li key={key}><button type="button" onClick={() => jump(key)}>{fieldLabel(key)}<PetIcon name="chevron-right" /></button></li>)}
+                  </ul>
                 </li>
               ))}
             </ul>
