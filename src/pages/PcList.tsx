@@ -1,5 +1,5 @@
 // PC ① 利用者一覧（キャンバス PcList）
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, type ClientSummary } from '../lib/api.ts'
 import { linkProps, navigate } from '../lib/router.tsx'
 import { PcHeader } from '../components/Chrome.tsx'
@@ -10,12 +10,18 @@ export function PcList({ staffName }: { staffName: string }) {
   const [sort, setSort] = useState<'updated' | 'name'>('updated')
   const [adding, setAdding] = useState(false)
   const [error, setError] = useState('')
+  const requestId = useRef(0)
 
   useEffect(() => {
+    const id = ++requestId.current
+    setClients(null)
+    setError('')
     const t = setTimeout(() => {
-      api.clients(q, sort).then((r) => setClients(r.clients)).catch((e) => setError(String(e.message)))
+      api.clients(q, sort)
+        .then((r) => { if (id === requestId.current) setClients(r.clients) })
+        .catch((e: Error) => { if (id === requestId.current) setError(String(e.message)) })
     }, q ? 250 : 0)
-    return () => clearTimeout(t)
+    return () => { clearTimeout(t); requestId.current++ }
   }, [q, sort])
 
   return (
@@ -56,6 +62,8 @@ export function PcList({ staffName }: { staffName: string }) {
               <div>要介護度</div>
               <div>アセスメント（必須 {clients?.[0]?.required.total ?? 84} 欄）</div>
             </div>
+            {!error && clients === null && <div role="status" style={{ padding: '18px 20px', color: '#5A6270', fontSize: 14 }}>読み込んでいます</div>}
+            {!error && clients?.length === 0 && <div role="status" style={{ padding: '18px 20px', color: '#5A6270', fontSize: 14 }}>その名前の利用者はいません</div>}
             {(clients ?? []).map((c) => {
               const pct = c.required.total ? (c.required.filled / c.required.total) * 100 : 0
               const sub = [c.sex ? `${c.sex}性` : null, c.status, c.isNew ? '新規' : null].filter(Boolean).join(' ・ ')
