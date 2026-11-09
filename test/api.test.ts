@@ -347,3 +347,35 @@ test('差分の欄の直しは、画面が元にした値が今の値と違え�
   const ok = await call(`/api/documents/${docId}/fields`, { method: 'PATCH', body: JSON.stringify({ changes: [{ key: 'person.lifeHistory', value: '書き直した', base: cur }] }) })
   assert.equal(ok.status, 200)
 })
+
+test('認定調査票は確認した欄だけに出典を記録し、409では一部も反映しない', { skip }, async () => {
+  const made = await call('/api/clients', { method: 'POST', body: JSON.stringify({ name: '検証 太郎' }) })
+  assert.equal(made.status, 201)
+  const path = '/api/documents/' + made.body.assessmentId
+  const source = { fileName: 'survey-clean.pdf', sha256: 'a'.repeat(64), recordedOn: '2026-11-04' }
+  const post = (changes: { key: string, choice: number, base: unknown }[], token?: string) => call(path + '/survey-import', {
+    method: 'POST', token, body: JSON.stringify({ ...source, changes }),
+  })
+
+  assert.equal((await post([{ key: 'survey.2_2', choice: 2, base: null }], OTHER)).status, 404)
+  assert.equal((await post([{ key: 'survey.2_1', choice: 2, base: null }])).status, 400)
+  const applied = await post([{ key: 'survey.2_2', choice: 2, base: null }])
+  assert.equal(applied.status, 200)
+  const fields = applied.body.document.fields
+  assert.equal(fields['survey.2_2'].value, '見守り等')
+  assert.equal(fields['survey.2_2'].by, 'cm')
+  assert.deepEqual(fields['survey.2_2'].surveySource, { kind: 'survey-import', ...source, page: 2, choice: 2 })
+  assert.equal(fields['survey.2_4'], undefined)
+
+  assert.equal((await post([
+    { key: 'survey.2_4', choice: 2, base: null },
+    { key: 'survey.2_2', choice: 3, base: null },
+  ])).status, 409)
+  assert.equal((await call(path)).body.document.fields['survey.2_4'], undefined)
+
+  const edited = await call(path + '/fields', {
+    method: 'PATCH', body: JSON.stringify({ changes: [{ key: 'survey.2_2', value: '一部介助', base: '見守り等' }] }),
+  })
+  assert.equal(edited.status, 200)
+  assert.equal(edited.body.document.fields['survey.2_2'].surveySource, undefined)
+})

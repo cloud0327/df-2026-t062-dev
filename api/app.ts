@@ -3,6 +3,7 @@
 import { Hono, type Context } from 'hono'
 import { z } from 'zod'
 import { pageImageAssetPath, type FormAssetsView } from '../core/form.ts'
+import { SURVEY_IMPORT_KEYS, surveyChoice } from '../core/survey-import.ts'
 import { validValue } from '../core/schema.ts'
 import * as forms from '../db/forms.ts'
 import { tx, type Db } from '../db/pool.ts'
@@ -24,6 +25,14 @@ export interface ApiDeps {
 const ClientInput = z.object({ name: z.string().trim().min(1).max(60), sex: z.enum(['男', '女']).nullish(), status: z.enum(['在宅', '入院中', '入所中']).optional() })
 // base: 画面がこの直しの元にした値（null は空）。サーバーの今の値と違えば 409
 const PatchInput = z.object({ changes: z.array(z.object({ key: z.string().min(1).max(200), value: z.unknown(), base: z.unknown(), mode: z.enum(['edit', 'revert']).optional() })).min(1).max(200) })
+const SurveyImportInput = z.object({
+  fileName: z.string().trim().min(1).max(255),
+  sha256: z.string().regex(/^[0-9a-f]{64}$/),
+  recordedOn: z.iso.date().nullable(),
+  changes: z.array(z.object({
+    key: z.enum(SURVEY_IMPORT_KEYS), choice: z.number().int().min(1).max(4), base: z.unknown(),
+  })).min(1).max(SURVEY_IMPORT_KEYS.length),
+})
 const EditsInput = z.object({ formVersionId: z.string().uuid(), edits: z.array(z.object({ slot: z.string().min(1).max(200), text: z.string().max(20000) })).min(1).max(200) })
 const SaveInput = z.discriminatedUnion('scope', [
   z.object({ scope: z.literal('document') }),
@@ -144,6 +153,18 @@ export function createApp(deps: ApiDeps) {
     for (const ch of changes) if (!validValue(ch.key, ch.value)) throw new repo.BadRequest(`値の形が違います: ${ch.key}`)
     const r = await repo.patchFields(db, staff, c.req.param('id')!, changes.map((ch) => ({ key: ch.key, value: ch.value ?? null, base: ch.base ?? null, mode: ch.mode })))
     return json(c, { ...r, document: await repo.getDocument(db, staff.officeId, c.req.param('id')!) })
+  }))
+
+  app.post('/api/documents/:id/survey-import', authed(async (c, staff, db) => {
+    const { fileName, sha256, recordedOn, changes } = await body(c, SurveyImportInput)
+    if (new Set(changes.map((ch) => ch.key)).size !== changes.length) throw new repo.BadRequest('同じ欄が重複しています')
+    const id = c.req.param('id')!
+    await repo.patchFields(db, staff, id, changes.map(({ key, choice, base }) => {
+      const value = surveyChoice(key, choice)
+      if (value === undefined) throw new repo.BadRequest('認定調査票の選択肢が不正です')
+      return { key, value, base, surveySource: { kind: 'survey-import', fileName, sha256, recordedOn, page: 2, choice } }
+    }))
+    return json(c, { document: await repo.getDocument(db, staff.officeId, id) })
   }))
 
   // 用紙の印字欄の直し。サーバーがその時点の値に当てる（当てられない直しは理由を返す）

@@ -195,7 +195,18 @@ export function PcWork({ clientId, staffName }: { clientId: string, staffName: s
           )}
         </section>
 
-        <PetHelper />
+        <PetHelper survey={!isAdm && doc && doc.id === docId && client ? {
+          document: doc,
+          clientName: client.name,
+          beforeApply: state.flush,
+          onApplied: () => {
+            reloadDoc.current()
+            setDocSaved(false)
+            setSavedPages((previous) => { const next = new Set(previous); next.delete(6); return next })
+            const pageIndex = pages.findIndex((p) => p.no === 6)
+            if (pageIndex !== -1) jump(pageIndex)
+          },
+        } : undefined} />
       </div>
     </div>
   )
