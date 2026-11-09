@@ -62,9 +62,9 @@ export function PcWork({ clientId, staffName }: { clientId: string, staffName: s
 
   const pet = useMemo(() => {
     if (empty) return { context: 'アセスメント作成中', message: `${client?.name ?? ''}さんのアセスメントを始めよう。\nこの順に進めると、面談で聞くことが少なくて済むよ。`, items: ['書類の写しを入れる', '初回の面談を録音する', '用紙を確かめて保存する'] }
-    if (hasUpdates) return { context: 'アセスメント編集中', message: `今回の録音から、${[...state.updates.values()].length} ページに書き足したよ。\n下線を押すと、前の文と比べられるよ。`, items: ['変わったところを順に見る', '今回の書き込みを元に戻す', '次の面談の準備'] }
+    if (hasUpdates) return { context: 'アセスメント編集中', message: `今回の録音から、${state.updatedFields} 欄に書き足したよ。\n下線を押すと、前の文と比べられるよ。`, items: ['変わったところを順に見る', '今回の書き込みを元に戻す', '次の面談の準備'] }
     return { context: 'アセスメント編集中', message: '今は次の操作ができるよ。\nどれを進める？', items: ['未確認の項目を見る', '書類を追加する', '次の面談の準備'] }
-  }, [empty, hasUpdates, client?.name, state.updates])
+  }, [empty, hasUpdates, client?.name, state.updatedFields])
 
   const exportPdf = async () => {
     if (!docId) return

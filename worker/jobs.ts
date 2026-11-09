@@ -102,7 +102,8 @@ export async function runJob(deps: WorkerDeps, jobId: string): Promise<void> {
     }))
     const curRows = (await db.query('SELECT key, value, by FROM field_values WHERE client_id = $1 AND (document_id = $2 OR document_id IS NULL)', [job.client_id, job.document_id])).rows
     const current = Object.fromEntries(curRows.map((r) => [r.key, r.value]))
-    const first = !(await db.query("SELECT 1 FROM jobs WHERE document_id = $1 AND status IN ('succeeded', 'partial') AND id <> $2 LIMIT 1", [job.document_id, jobId])).rows.length
+    // 1 回目 = この書類に、まだ AI の書き込み（録音・見本）がない
+    const first = !(await db.query("SELECT 1 FROM batches WHERE document_id = $1 AND kind IN ('recording', 'seed') AND (job_id IS NULL OR job_id <> $2) LIMIT 1", [job.document_id, jobId])).rows.length
     const w0 = Date.now()
     const written = await providers.writer.write({ visits, newVisitId: visits[visits.length - 1].id, current, people, first })
 

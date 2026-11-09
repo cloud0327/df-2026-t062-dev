@@ -48,7 +48,7 @@ export async function seed(db: Db, opts: { email?: string, authUid?: string, off
   ] as const) {
     const c = await createClient(db, staff, { name, sex: '女', status: '在宅' })
     clients[key] = c.id
-    const values = { ...sample, ...extra, 'person.name': name }
+    const values: Record<string, unknown> = { ...sample, ...extra, 'person.name': name }
     await applyBatch(db, { officeId: staff.officeId, documentId: c.assessmentId, kind: 'seed', label: '見本のデータ', proposed: toProposed(values), system: Object.fromEntries(['assessment.initialDate', 'assessment.updateDate'].filter((k) => values[k]).map((k) => [k, values[k]])) })
     await saveDocument(db, staff, c.assessmentId, { scope: 'document' })
     await db.query('UPDATE clients SET next_visit_at = $2 WHERE id = $1', [c.id, visit])

@@ -15,3 +15,13 @@ gha-creds-*.json
 
 # Terraform configuration and local state
 infra/
+
+# 実行に要らないもの（Dockerfile は必要なファイルだけを COPY する）
+docs/
+test/
+src/
+public/
+eval/bench/
+.data/
+# レイアウトの抽出結果は実行時に読まない（大きい）
+forms/templates/*/layout.json

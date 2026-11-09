@@ -3,3 +3,17 @@ region                     = "asia-northeast1"
 service_name               = "t062-api"
 github_repository_id       = "1447301909"
 github_repository_owner_id = "234936919"
+
+# 画面（Firebase Hosting）の Origin。録音を source バケットへ直接送るための CORS に入る
+app_origins = [
+  "https://your-billing-enabled-project.web.app",
+  "https://your-billing-enabled-project.firebaseapp.com",
+  "http://localhost:5173",
+]
+
+# Identity Platform の承認済みドメイン（空なら Google の既定のまま）。指定するときは既定分も含める
+# authorized_domains = ["localhost", "your-billing-enabled-project.firebaseapp.com", "your-billing-enabled-project.web.app"]
+
+# 予算アラート（任意）。請求先アカウント ID を入れると月額の予算通知を作る
+# billing_account_id = "012345-6789AB-CDEF01"
+# budget_amount_jpy  = 10000

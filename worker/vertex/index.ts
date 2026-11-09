@@ -1,6 +1,18 @@
-// 本物の中身（Speech-to-Text Chirp 3 と Gemini）。まだ作っていない。
+// 本物の中身（Speech-to-Text Chirp 3 と Gemini）。AI_PROVIDER=vertex のときだけ読み込まれる。
+// 環境変数: GOOGLE_CLOUD_PROJECT、GEMINI_LOCATION（既定 asia-northeast1）、GEMINI_MODEL（既定 gemini-3.5-flash-lite）、
+// GEMINI_CONCURRENCY（既定 4）、GEMINI_YEN_IN／GEMINI_YEN_OUT、STT_LOCATION（既定 asia-northeast1）
 import type { Providers } from '../types.ts'
+import { geminiFactory } from './gemini.ts'
+import { speakerAssigner } from './speakers.ts'
+import { vertexStt } from './stt.ts'
+import { sheetWriter } from './writer.ts'
 
-export function vertexProviders(_env: NodeJS.ProcessEnv): Providers {
-  throw new Error('AI_PROVIDER=vertex はまだ使えません')
+export function vertexProviders(env: NodeJS.ProcessEnv): Providers {
+  if (!env.GOOGLE_CLOUD_PROJECT) throw new Error('GOOGLE_CLOUD_PROJECT が未設定です')
+  const newLlm = geminiFactory(env)
+  return {
+    stt: vertexStt(env),
+    speakers: speakerAssigner(newLlm),
+    writer: sheetWriter(newLlm, { concurrency: Number(env.GEMINI_CONCURRENCY) || 4 }),
+  }
 }

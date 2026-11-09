@@ -16,3 +16,5 @@ gha-creds-*.json
 
 # Local data (storage emulation)
 .data/
+__pycache__/
+*.pyc

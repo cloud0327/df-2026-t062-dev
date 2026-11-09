@@ -154,22 +154,23 @@ export function useDocument(docId: string | undefined) {
 
   const total = useMemo(() => [...counts.values()].reduce((a, c) => ({ ai: a.ai + c.ai, hand: a.hand + c.hand }), { ai: 0, hand: 0 }), [counts])
 
-  /** 2 回目からの AI の書き換え（前の文があるところ）がページにいくつあるか */
-  const updates = useMemo(() => {
+  /** 2 回目からの AI の書き換え（前の文があるところ）がページにいくつあるか。updatedFields は書き換えた欄の数 */
+  const { updates, updatedFields } = useMemo(() => {
     const out = new Map<number, number>()
+    const keys = new Set<string>()
     for (const p of pages) {
       let n = 0
       for (const s of p.slots) {
         const d = diffOf(s)
-        if (d && d.before) n += sentenceDiff(d.before, d.after).length
+        if (d && d.before) { n += sentenceDiff(d.before, d.after).length; keys.add(d.key) }
       }
       if (n) out.set(p.no, n)
     }
-    return out
+    return { updates: out, updatedFields: keys.size }
   }, [pages, diffOf])
 
   return {
-    doc, form, pages, slotPage, current, saved, rendered, renderedSaved, marks, counts, total, updates, sync, error,
+    doc, form, pages, slotPage, current, saved, rendered, renderedSaved, marks, counts, total, updates, updatedFields, sync, error,
     pendingCount: pending.size,
     edit, setValue, flush, reload: load, diffOf,
     savePage: (no: number) => doSave({ scope: 'page', page: no }),
