@@ -1,5 +1,5 @@
 // iPad ① 利用者（キャンバス PadList）
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, type ClientSummary } from '../lib/api.ts'
 import { linkProps } from '../lib/router.tsx'
 import { Logo } from '../components/Chrome.tsx'
@@ -13,14 +13,21 @@ const visit = (iso: string | null) => {
 }
 
 export function PadList({ staffName }: { staffName: string }) {
-  const [clients, setClients] = useState<ClientSummary[]>([])
+  const [clients, setClients] = useState<ClientSummary[] | null>(null)
+  const requestId = useRef(0)
   const [q, setQ] = useState('')
   const auth = useAuth()
   useEffect(() => {
-    const t = setTimeout(() => { api.clients(q, 'updated').then((r) => setClients(r.clients)).catch(() => {}) }, q ? 250 : 0)
-    return () => clearTimeout(t)
+    const id = ++requestId.current
+    setClients(null)
+    const t = setTimeout(() => {
+      api.clients(q, 'updated')
+        .then((r) => { if (id === requestId.current) setClients(r.clients) })
+        .catch(() => { /* 読み込み失敗の表示は Issue #2 で扱う */ })
+    }, q ? 250 : 0)
+    return () => { clearTimeout(t); requestId.current++ }
   }, [q])
-  const sorted = [...clients].sort((a, b) => (a.nextVisitAt ?? '9').localeCompare(b.nextVisitAt ?? '9'))
+  const sorted = [...(clients ?? [])].sort((a, b) => (a.nextVisitAt ?? '9').localeCompare(b.nextVisitAt ?? '9'))
 
   return (
     <div className="pad" style={{ minHeight: '100vh', fontFamily: "'Noto Sans JP',system-ui,sans-serif", color: '#1F2430', background: '#F4F5F7', fontSize: 16, lineHeight: 1.6, display: 'flex', flexDirection: 'column' }}>
@@ -38,6 +45,8 @@ export function PadList({ staffName }: { staffName: string }) {
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5A6270" strokeWidth="2" strokeLinecap="round" aria-hidden="true" style={{ position: 'absolute', left: 16 }}><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
           <input id="q" type="search" placeholder="氏名で探す" value={q} onChange={(e) => setQ(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', font: 'inherit', fontSize: 17, padding: '12px 16px 12px 46px', border: '1px solid #CBD1DA', borderRadius: 12, background: '#FFFFFF', color: '#1F2430', minHeight: 54 }} />
         </div>
+        {clients === null && <div role="status" style={{ padding: '18px 20px', color: '#5A6270', fontSize: 16 }}>読み込んでいます</div>}
+        {clients?.length === 0 && <div role="status" style={{ padding: '18px 20px', color: '#5A6270', fontSize: 16 }}>その名前の利用者はいません</div>}
         {sorted.map((c) => (
           <a key={c.id} className="row" {...linkProps(`/clients/${c.id}`)}>
             <div style={{ flex: '1 1 auto', minWidth: 0 }}><div className="nm">{c.name} さん</div><div className="psub">{visit(c.nextVisitAt)}</div></div>
