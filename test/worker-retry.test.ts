@@ -37,9 +37,12 @@ after(async () => {
 
 async function job() {
   const client = await createClient(db, staff, { name: `障害注入 ${randomUUID()}` })
-  const rec = await createRecording(db, staff, client.id, 'audio/webm')
-  const completed = await completeRecording(db, staff, rec.id, 4096, 60_000)
-  return { ...completed, clientId: client.id, documentId: client.assessmentId }
+  const rec = await tx(db, (c) => createRecording(c, staff, client.id, 'audio/webm', randomUUID()))
+  const bytes = Buffer.alloc(4096)
+  await storage.write('source', rec.objectPath, bytes)
+  const jobId = await completeRecording(db, staff, rec.id, 60_000, bytes.byteLength, (path) => storage.size('source', path))
+  assert.ok(jobId)
+  return { jobId, clientId: client.id, documentId: client.assessmentId }
 }
 
 const providers = (write: Providers['writer']['write']): Providers => ({

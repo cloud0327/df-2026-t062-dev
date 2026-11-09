@@ -31,13 +31,18 @@
 | `field_values` | 今の値（シート） | `key`、`value`、`ai_value`（最後に AI が書いた値）、`by`、`batch_id`、`cite`（根拠の発言の id）。一意: `(client_id, document_id, key)`（NULLS NOT DISTINCT） |
 | `field_history` | 前の値 | 書き換えるたびに追記 |
 | `document_saved` | 保存した値 | `(document_id, key)` ごとに `value`・`by` |
+| `document_sync_reviews` | 書類間の差異を最後に確認した元書類の値 | 元書類・対象書類・`key` ごとに `source_value`、確認者・確認日時。欄の値そのものと別に保持し、次の元書類変更を判定する |
 | `revisions` | 版 | `rev`、`scope`（`hunk`／`page`／`document`）、`values`（保存した値の全部）、`template_version_id`（PDF はこの様式の版から作る） |
 | `batches` | 書き込み | `kind`（`recording`／`copy`／`seed`）、`label`（「AI 書き込み 2・1/25 の録音」など）、`changes`（key・op・before・after）、`kept`（書き換えなかったケアマネの欄） |
 | `recordings` | 録音（原本の音声） | `object_path`（Cloud Storage の場所）、`mime`、`bytes`、`duration_ms`、`status` |
 | `transcripts` | 文字起こし（原本の文字） | `utterances`（id・時刻・話者の記号・人・文）、`speakers`、`model` |
-| `jobs` | 録音 1 本の処理 | `status`（queued／processing／succeeded／partial／failed）、`step`（transcribe／speakers／write／apply）、`steps`（段ごとの結果・時間・トークン・円）、`lease_until`、`run_token`、`attempts`、`batch_id`。録音 1 つに 1 つ、同じ書類で処理中は 1 つだけ |
+| `jobs` | 録音 1 本の処理 | `status`（queued／processing／succeeded／partial／failed）、`step`（transcribe／speakers／write／apply）、`steps`（段ごとの結果・時間・トークン・円）、`lease_until`、`run_token`、`attempts`、`error_kind`、`batch_id`。録音 1 つに 1 つ、同じ書類で処理中は 1 つだけ |
 | `exports` | 出した PDF | `revision_rev`、`template_version_id`、`object_path` |
 | `audit_events` | 操作の記録（追記だけ） | `action`（client.create／document.edit／document.save／document.pdf／recording.start／form.rebase など）、`detail`（数だけ。欄の値や話の中身は入れない。form.rebase は移した版の番号と中身の指紋） |
+
+### 書類間の差異
+
+入院時情報提供書を作るときにアセスメントの値を写す。`shared` 以外の欄はその後独立する。両方の様式の版が読む `key` の共通部分を比較し、`shared` は除く。最初の確認済み値は作成時の `copy` バッチの `after`（写していない空欄は NULL）を使う。判断後は `document_sync_reviews` の元書類の値を更新する。元書類の現在値が保存済み値と違う間は差異を表示するが反映・維持を受け付けない。反映は対象書類の今の値だけを変え、保存済み版と PDF は「書類を保存」するまで変わらない。監査記録には判断と欄の `key` だけを残し、値は入れない。
 
 ## 録音ジョブの失敗と再配信
 
