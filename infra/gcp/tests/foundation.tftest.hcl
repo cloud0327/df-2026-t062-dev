@@ -227,6 +227,9 @@ run "private_service_with_scoped_deployer" {
       google_storage_bucket_iam_member.api_output.role == "roles/storage.objectAdmin" &&
       google_storage_bucket_iam_member.api_forms.role == "roles/storage.objectViewer" &&
       google_storage_bucket_iam_member.worker_source.role == "roles/storage.objectViewer" &&
+      google_storage_bucket_iam_member.speech_source_bucket_viewer.role == "roles/storage.bucketViewer" &&
+      google_storage_bucket_iam_member.speech_source_object_viewer.role == "roles/storage.objectViewer" &&
+      google_storage_bucket_iam_member.speech_source_object_viewer.member == "serviceAccount:service-123456789012@gcp-sa-speech.iam.gserviceaccount.com" &&
       google_storage_bucket_iam_member.worker_work.role == "roles/storage.objectAdmin" &&
       google_project_iam_member.worker_vertex.role == "roles/aiplatform.user" &&
       google_project_iam_member.worker_speech.role == "roles/speech.client"
