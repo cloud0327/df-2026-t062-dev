@@ -6,7 +6,7 @@ import { validValue } from '../core/schema.ts'
 import type { Db } from '../db/pool.ts'
 import * as repo from '../db/repo.ts'
 import type { Verifier } from './auth.ts'
-import { makePdf } from './pdf.ts'
+import { FormUnavailable, makePdf } from './pdf.ts'
 import type { Queue } from './queue.ts'
 import { LocalStorage, type Storage } from './storage.ts'
 
@@ -154,6 +154,7 @@ export function createApp(deps: ApiDeps) {
   app.onError((err, c) => {
     if (err instanceof repo.NotFound) return json(c, { error: 'not_found' }, 404)
     if (err instanceof repo.BadRequest) return json(c, { error: 'bad_request', message: err.message }, 400)
+    if (err instanceof FormUnavailable) return json(c, { error: 'form_unavailable', message: 'この様式の元の PDF がまだ用意されていません' }, 503)
     // ログには中身を出さない（種類と道だけ）
     console.error(JSON.stringify({ severity: 'ERROR', msg: 'api error', path: c.req.routePath, error: err.name }))
     return json(c, { error: 'internal' }, 500)

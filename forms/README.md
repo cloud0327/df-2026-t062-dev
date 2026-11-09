@@ -4,7 +4,7 @@
 
 | 様式 | フォルダ | 欄の数 | 元の PDF |
 |---|---|---|---|
-| 入院時情報提供書 | `templates/admission/` | 141 | 地域の連携会議の版（2018.10）、1 ページ |
+| 入院時情報提供書 | `templates/admission/` | 141 | 地域の連携会議の版（2018.10）、1 ページ（リポジトリには入れていない） |
 | アセスメント用紙 | `templates/assessment/` | 1,223 | 全社協「居宅サービス計画ガイドライン ver.3」、12 ページ（表紙を含む） |
 
 どちらも同じ見本データ（`samples/見本_花子.json`、架空の利用者）から作れる。アセスメントで聞いた情報が入院時の書類にも流れることを、この見本で確かめられる。
@@ -82,7 +82,7 @@ pdfplumber の「文字の枠」は、書類のフォントの情報によって
 
 | ファイル | 中身 |
 |---|---|
-| `templates/<様式>/base.pdf` | 元の様式 |
+| `templates/<様式>/base.pdf` | 元の様式（リポジトリには入れていない。上の注意） |
 | `templates/<様式>/template.json` | 欄の位置。**Designer で直したらこれが正**。`basePdf` はファイル名だけを持つ |
 | `templates/admission/mapping.mjs` | 入院時情報提供書の変換 |
 | `templates/assessment/pages/*.mjs`、`index.mjs`、`lib-p567.mjs` | アセスメント用紙の欄の配置と変換 |

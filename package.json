@@ -19,7 +19,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test",
     "build": "vite build && node scripts/write-version.mjs",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "forms:fetch": "node forms/scripts/fetch.mjs"
   },
   "devDependencies": {
     "@types/node": "24.19.2",

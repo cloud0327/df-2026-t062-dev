@@ -50,6 +50,7 @@ docker compose up -d                       # PostgreSQL（localhost:54329）
 export DATABASE_URL=postgres://postgres:postgres@localhost:54329/careman
 npm run db:migrate                         # 表を作る
 npm run db:seed                            # 見本のデータ（架空の人と、公開の演習シナリオ）
+npm run forms:fetch                        # 様式の PDF を全社協の公式の URL から取り、画面の画像を作る（pdftoppm が要る）
 
 AUTH_MODE=dev npm run dev:api              # ターミナル 1: api（http://127.0.0.1:8787）
 npm run dev                                # ターミナル 2: 画面（Vite）
@@ -108,6 +109,10 @@ PR と `main` で、型チェック、様式の確かめ、テスト（PostgreSQ
 
 - Hosting: Firebase Console の **Hosting → リリース履歴** で、動作確認済みのリリースに戻します。`/version.json` の SHA で確かめます。
 - Cloud Run: `cloud-run.yml` の手順（前のリビジョンにトラフィックを戻す）。DB の移行は足すだけにしているので、戻しても壊れません。
+
+## 様式の PDF について
+
+様式の元の PDF と、そこから作ったページの画像・座標データは、利用条件のため公開リポジトリに入れていません。アセスメント用紙は `npm run forms:fetch` で全社協の公式の URL から取ってきます（くわしくは [forms/README.md](forms/README.md)）。画像がないときは、白い紙の上に欄だけが出ます。公開のデモで用紙の画像を配る前に、全社協に利用の許可を確かめます。
 
 ## 個人情報の扱い
 

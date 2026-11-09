@@ -18,3 +18,9 @@ gha-creds-*.json
 .data/
 __pycache__/
 *.pyc
+
+# 様式の元の PDF・そこから作ったページの画像と座標データは、公開リポジトリに入れない（利用条件のため）。
+# アセスメントは npm run forms:fetch で全社協の公式の URL から取ってくる。
+forms/templates/*/base.pdf
+forms/templates/*/layout.json
+public/forms/

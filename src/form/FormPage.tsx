@@ -26,6 +26,8 @@ interface Props {
 function FormPageInner({ page, state, touch, disabled, batchLabel, dim, glow }: Props) {
   const [open, setOpen] = useState('')
   const [diffOpen, setDiffOpen] = useState('')
+  // 様式の画像は公開リポジトリに入れていない（forms/scripts/fetch.mjs で作る）。ないときは白い紙に欄だけを出す
+  const [noImage, setNoImage] = useState(false)
   const { rendered, marks, edit } = state
 
   const cell = open ? page.slots.find((s) => s.name === open && s.kind === 'cell') : undefined
@@ -108,7 +110,9 @@ function FormPageInner({ page, state, touch, disabled, batchLabel, dim, glow }: 
 
   return (
     <div className="pg">
-      <img className="pimg" src={page.image} alt={`${page.title}`} style={dim ? { opacity: 0.55 } : undefined} draggable={false} />
+      {noImage
+        ? <div className="pimg" role="img" aria-label={page.title} style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: '4%', color: '#8A919C', fontSize: 12 }}>様式の画像がありません（npm run forms:fetch）</div>
+        : <img className="pimg" src={page.image} alt={`${page.title}`} style={dim ? { opacity: 0.55 } : undefined} draggable={false} onError={() => setNoImage(true)} />}
       {page.slots.map((s) => (s.kind === 'circle' || s.kind === 'check' ? renderMark(s) : s.kind === 'cell' ? renderCell(s) : renderText(s)))}
       {cell && (
         <div role="dialog" aria-label={cell.label} style={{

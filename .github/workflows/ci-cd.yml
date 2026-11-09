@@ -41,6 +41,8 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run forms:check
+      # 様式の元の PDF はリポジトリに入れていない。PDF を作るテストのために、全社協の公式の URL から取る（ハッシュを確かめる）
+      - run: npm run forms:fetch -- --pdf-only
       - run: npm test
         env:
           DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/careman
