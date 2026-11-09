@@ -15,20 +15,26 @@ const visit = (iso: string | null) => {
 export function PadList({ staffName }: { staffName: string }) {
   const [clients, setClients] = useState<ClientSummary[] | null>(null)
   const requestId = useRef(0)
-  const [loadFailed, setLoadFailed] = useState(false)
+  const [error, setError] = useState(false)
+  const [retry, setRetry] = useState(0)
+  const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
   const auth = useAuth()
+
   useEffect(() => {
     const id = ++requestId.current
     setClients(null)
-    setLoadFailed(false)
+    setError(false)
+    setLoading(true)
     const t = setTimeout(() => {
       api.clients(q, 'updated')
         .then((r) => { if (id === requestId.current) setClients(r.clients) })
-        .catch(() => { if (id === requestId.current) setLoadFailed(true) /* 失敗文言は Issue #2 */ })
+        .catch(() => { if (id === requestId.current) setError(true) })
+        .finally(() => { if (id === requestId.current) setLoading(false) })
     }, q ? 250 : 0)
     return () => { clearTimeout(t); requestId.current++ }
-  }, [q])
+  }, [q, retry])
+
   const sorted = [...(clients ?? [])].sort((a, b) => (a.nextVisitAt ?? '9').localeCompare(b.nextVisitAt ?? '9'))
 
   return (
@@ -47,9 +53,15 @@ export function PadList({ staffName }: { staffName: string }) {
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5A6270" strokeWidth="2" strokeLinecap="round" aria-hidden="true" style={{ position: 'absolute', left: 16 }}><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
           <input id="q" type="search" placeholder="氏名で探す" value={q} onChange={(e) => setQ(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', font: 'inherit', fontSize: 17, padding: '12px 16px 12px 46px', border: '1px solid #CBD1DA', borderRadius: 12, background: '#FFFFFF', color: '#1F2430', minHeight: 54 }} />
         </div>
-        {clients === null && !loadFailed && <div role="status" style={{ padding: '18px 20px', color: '#5A6270', fontSize: 14 }}>読み込んでいます</div>}
-        {clients?.length === 0 && <div role="status" style={{ padding: '18px 20px', color: '#5A6270', fontSize: 14 }}>その名前の利用者はいません</div>}
-        {sorted.map((c) => (
+        {error && (
+          <div role="alert" style={{ background: '#FFF4F2', border: '1px solid #F0B4AA', borderRadius: 12, padding: 16, color: '#A3261C' }}>
+            <p>利用者一覧を読み込めませんでした。</p>
+            <button type="button" className="btn" onClick={() => setRetry((n) => n + 1)}>もう一度</button>
+          </div>
+        )}
+        {loading && !error && <div role="status" style={{ padding: '18px 20px', color: '#5A6270', fontSize: 14 }}>読み込み中...</div>}
+        {!loading && !error && clients?.length === 0 && <div role="status" style={{ padding: '18px 20px', color: '#5A6270', fontSize: 14 }}>その名前の利用者はいません</div>}
+        {!error && !loading && sorted.map((c) => (
           <a key={c.id} className="row" {...linkProps(`/clients/${c.id}`)}>
             <div style={{ flex: '1 1 auto', minWidth: 0 }}><div className="nm">{c.name} さん</div><div className="psub">{visit(c.nextVisitAt)}</div></div>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9AA3B0" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
