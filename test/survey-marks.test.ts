@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { readRowMarks } from '../src/survey/marks.ts'
+import { readBoxMarks } from '../src/survey/marks.ts'
 import { SURVEY_IMPORT_KEYS, surveyChoice } from '../core/survey-import.ts'
 
 // NodeにはImageDataがないため、検出器が使う画素配列と寸法だけを用意する。
@@ -24,18 +24,19 @@ function row(shades: (number | null)[]) {
   return { width, height, data } as ImageData
 }
 
-test('3択と4択の印を位置順に読み、薄い印と複数の印を区別できる', () => {
-  assert.deepEqual(readRowMarks(row([null, 0, null]), 23, 1, 3), ['empty', 'clear', 'empty'])
-  assert.deepEqual(readRowMarks(row([null, 220, null, 0]), 23, 1, 4), ['empty', 'faint', 'empty', 'clear'])
-  assert.deepEqual(readRowMarks(row([0, null, 0]), 23, 1, 3), ['clear', 'empty', 'clear'])
-  assert.throws(() => readRowMarks(row([null, 0, null]), 23, 1, 4), /選択欄の位置/)
-  assert.throws(() => readRowMarks(row([null, 0, null, null]), 23, 1, 3), /選択欄の位置/)
+test('原本の枠を照合し、選択肢の順序で濃い印と薄い印を区別する', () => {
+  const boxes = [[90, 10], [140, 10], [190, 10], [240, 10]] as const
+  assert.deepEqual(readBoxMarks(row([null, 220, null, 0]), boxes, 1, 11, 14), ['empty', 'faint', 'empty', 'clear'])
+  assert.deepEqual(readBoxMarks(row([0, null, 0]), [boxes[2], boxes[0]], 1, 11, 14), ['clear', 'clear'])
+  assert.throws(() => readBoxMarks(row([null, 0, null]), boxes, 1, 11, 14), /選択欄の位置/)
 })
 
-test('取り込み対象は第2群12項目で、3択の4番目は受け付けない', () => {
-  assert.deepEqual(SURVEY_IMPORT_KEYS, Array.from({ length: 12 }, (_, i) => `survey.2_${i + 1}`))
-  for (const key of ['survey.2_3', 'survey.2_7', 'survey.2_8', 'survey.2_9', 'survey.2_12'] as const) {
-    assert.notEqual(surveyChoice(key, 3), undefined, key)
-    assert.equal(surveyChoice(key, 4), undefined, key)
-  }
+test('複数回答は選択肢順で返し、「ない」と他の選択肢の併用を拒否する', () => {
+  assert.equal(SURVEY_IMPORT_KEYS.length, 55)
+  assert.deepEqual(surveyChoice('survey.1_1', [4, 2]), ['左上肢', '左下肢'])
+  assert.deepEqual(surveyChoice('survey.1_1', [1]), ['ない'])
+  assert.equal(surveyChoice('survey.1_1', [1, 2]), undefined)
+  assert.equal(surveyChoice('survey.1_1', [2, 2]), undefined)
+  assert.equal(surveyChoice('survey.2_3', 4), undefined)
+  assert.equal(surveyChoice('survey.2_3', [1, 2]), undefined)
 })

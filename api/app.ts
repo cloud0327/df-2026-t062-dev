@@ -3,7 +3,7 @@
 import { Hono, type Context } from 'hono'
 import { z } from 'zod'
 import { pageImageAssetPath, type FormAssetsView } from '../core/form.ts'
-import { SURVEY_IMPORT_KEYS, surveyChoice } from '../core/survey-import.ts'
+import { SURVEY_IMPORT_KEYS, surveyChoice, surveyPage } from '../core/survey-import.ts'
 import { validValue } from '../core/schema.ts'
 import * as forms from '../db/forms.ts'
 import { tx, type Db } from '../db/pool.ts'
@@ -30,7 +30,7 @@ const SurveyImportInput = z.object({
   sha256: z.string().regex(/^[0-9a-f]{64}$/),
   recordedOn: z.iso.date().nullable(),
   changes: z.array(z.object({
-    key: z.enum(SURVEY_IMPORT_KEYS), choice: z.number().int().min(1).max(4), base: z.unknown(),
+    key: z.enum(SURVEY_IMPORT_KEYS), choice: z.union([z.int().min(1).max(6), z.array(z.int().min(1).max(6)).min(1).max(6)]), base: z.unknown(),
   })).min(1).max(SURVEY_IMPORT_KEYS.length),
 })
 const EditsInput = z.object({ formVersionId: z.string().uuid(), edits: z.array(z.object({ slot: z.string().min(1).max(200), text: z.string().max(20000) })).min(1).max(200) })
@@ -162,7 +162,7 @@ export function createApp(deps: ApiDeps) {
     await repo.patchFields(db, staff, id, changes.map(({ key, choice, base }) => {
       const value = surveyChoice(key, choice)
       if (value === undefined) throw new repo.BadRequest('認定調査票の選択肢が不正です')
-      return { key, value, base, surveySource: { kind: 'survey-import', fileName, sha256, recordedOn, page: 2, choice } }
+      return { key, value, base, surveySource: { kind: 'survey-import', fileName, sha256, recordedOn, page: surveyPage(key), choice } }
     }))
     return json(c, { document: await repo.getDocument(db, staff.officeId, id) })
   }))

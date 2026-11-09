@@ -2,7 +2,7 @@
 import type { ClientSummary, DocumentView, JobView, SlotEdit, SlotEditResult, Staff, SyncDifference } from '../../db/repo.ts'
 import type { FormAssetsView, FormKind, FormVersionView } from '../../core/form.ts'
 
-import type { SurveyImportKey, SurveySource } from '../../core/survey-import.ts'
+import type { SurveyImportKey, SurveySelection, SurveySource } from '../../core/survey-import.ts'
 
 export type { ClientSummary, DocumentView, JobView, SlotEdit, SlotEditResult, Staff, SyncDifference }
 
@@ -69,7 +69,7 @@ export const api = {
   patch: (id: string, changes: { key: string, value: unknown, base: unknown, mode?: 'edit' | 'revert' }[]) =>
     req<{ syncedTo: string[], document: DocumentView }>('PATCH', `/api/documents/${id}/fields`, { changes }),
   importSurvey: (id: string, body: Pick<SurveySource, 'fileName' | 'sha256' | 'recordedOn'> & {
-    changes: { key: SurveyImportKey, choice: number, base: unknown }[],
+    changes: { key: SurveyImportKey, choice: SurveySelection, base: unknown }[],
   }) => req<{ document: DocumentView }>('POST', `/api/documents/${id}/survey-import`, body),
   edits: (id: string, formVersionId: string, edits: SlotEdit[]) =>
     req<{ results: SlotEditResult[], syncedTo: string[], document: DocumentView }>('POST', `/api/documents/${id}/edits`, { formVersionId, edits }),

@@ -2,6 +2,7 @@
 // ファイルごとに別のスキーマを使うので、ほかのテストとぶつからない。
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
+import { readFileSync } from 'node:fs'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -353,16 +354,19 @@ test('認定調査票は確認した欄だけに出典を記録し、409では�
   assert.equal(made.status, 201)
   const path = '/api/documents/' + made.body.assessmentId
   const source = { fileName: 'survey-clean.pdf', sha256: 'a'.repeat(64), recordedOn: '2026-11-04' }
-  const post = (changes: { key: string, choice: number, base: unknown }[], token?: string) => call(path + '/survey-import', {
+  const post = (changes: { key: string, choice: number | number[], base: unknown }[], token?: string) => call(path + '/survey-import', {
     method: 'POST', token, body: JSON.stringify({ ...source, changes }),
   })
-  // 正解表（eval/document-import/survey/gold.tsv）どおりの選択肢番号
-  const gold: Record<string, number> = {
-    'survey.2_1': 2, 'survey.2_2': 2, 'survey.2_3': 1, 'survey.2_4': 2, 'survey.2_5': 3, 'survey.2_6': 1,
-    'survey.2_7': 2, 'survey.2_8': 1, 'survey.2_9': 1, 'survey.2_10': 2, 'survey.2_11': 3, 'survey.2_12': 1,
-  }
+  const [, ...rows] = readFileSync(new URL('../eval/document-import/survey/gold.tsv', import.meta.url), 'utf8').trimEnd().split('\n')
+  const gold = rows.map((row) => {
+    const [item, , page, selected, , key, expected] = row.split('\t')
+    const choices = selected.split(',').map(Number)
+    const choice = item === '1-1' || item === '1-2' ? choices : choices[0]
+    return { key, choice, page: Number(page), value: JSON.parse(expected) }
+  })
   // 用紙の印字と同じ選択肢の数で受け取り、番号をそのまま値に変換する
   assert.equal((await post([{ key: 'survey.2_3', choice: 4, base: null }])).status, 400)
+  assert.equal((await post([{ key: 'survey.1_1', choice: [1, 2], base: null }])).status, 400)
   assert.equal((await post([{ key: 'survey.2_13', choice: 1, base: null }])).status, 400)
   assert.equal((await post([{ key: 'survey.2_2', choice: 2, base: null }], OTHER)).status, 404)
 
@@ -377,24 +381,20 @@ test('認定調査票は確認した欄だけに出典を記録し、409では�
   ])).status, 409)
   assert.equal((await call(path)).body.document.fields['survey.2_4'], undefined)
 
-  const applied = await post(Object.entries(gold).map(([key, choice]) => ({
+  const applied = await post(gold.map(({ key, choice }) => ({
     key, choice, base: key === 'survey.2_2' ? '見守り等' : null,
   })))
   assert.equal(applied.status, 200)
   const fields = applied.body.document.fields
-  const expected: Record<string, string> = {
-    'survey.2_1': '見守り等', 'survey.2_2': '見守り等', 'survey.2_3': 'できる', 'survey.2_4': '見守り等', 'survey.2_5': '一部介助', 'survey.2_6': '介助されていない',
-    'survey.2_7': '一部介助', 'survey.2_8': '介助されていない', 'survey.2_9': '介助されていない', 'survey.2_10': '見守り等', 'survey.2_11': '一部介助', 'survey.2_12': '週1回以上',
-  }
-  for (const [key, value] of Object.entries(expected)) {
-    assert.equal(fields[key].value, value, key)
+  for (const { key, choice, page, value } of gold) {
+    assert.deepEqual(fields[key].value, value, key)
     assert.equal(fields[key].by, 'cm', key)
-    assert.deepEqual(fields[key].surveySource, { kind: 'survey-import', ...source, page: 2, choice: gold[key] }, key)
+    assert.deepEqual(fields[key].surveySource, { kind: 'survey-import', ...source, page, choice }, key)
   }
   assert.equal(fields['survey.2_13'], undefined)
 
   // 反映済みの欄に元の base（空欄）で出すと、全部が保留になる
-  assert.equal((await post(Object.entries(gold).map(([key, choice]) => ({ key, choice, base: null })))).status, 409)
+  assert.equal((await post(gold.map(({ key, choice }) => ({ key, choice, base: null })))).status, 409)
   const kept = (await call(path)).body.document.fields
   assert.equal(kept['survey.2_3'].value, 'できる')
   assert.equal(kept['survey.2_11'].surveySource.choice, 3)
