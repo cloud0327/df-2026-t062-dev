@@ -11,6 +11,7 @@ import { useDocument } from '../form/useDocument.ts'
 import { api } from '../lib/api.ts'
 import { linkProps } from '../lib/router.tsx'
 import { incompleteFieldNames } from '../lib/jobStatus.ts'
+import { COMING_SOON_LABEL, newDocMenu } from '../lib/docMenu.ts'
 import { PetHelper } from '../components/PetHelper.tsx'
 import { SyncDifferences } from '../components/SyncDifferences.tsx'
 import { countText, downloadBlob } from '../components/Chrome.tsx'
@@ -192,8 +193,9 @@ export function PcWork({ clientId, staffName }: { clientId: string, staffName: s
           {newOpen && (
             <div role="menu" style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, width: 'min(300px, 100%)', background: '#FFFFFF', border: '1px solid #E1E4EA', borderRadius: 12, boxShadow: '0 10px 30px rgba(20,24,32,0.18)', padding: 8, display: 'flex', flexDirection: 'column', gap: 2 }}>
               <div style={{ fontSize: 12, color: '#5A6270', padding: '4px 8px 6px' }}>{client?.name}さんの今の情報から、AI が書き込みます</div>
-              <button className="mi" role="menuitem" type="button" onClick={() => setNewOpen(false)}><span>モニタリング</span><span className="mi-s">様式を登録すると作れます</span></button>
-              <button className="mi" role="menuitem" type="button" onClick={() => setNewOpen(false)}><span>デイの体験用紙</span><span className="mi-s">様式を登録すると作れます</span></button>
+              {newDocMenu.map((d) => (
+                <button key={d.label} className="mi" role="menuitem" type="button" disabled={!d.available} aria-disabled={!d.available} onClick={() => setNewOpen(false)}><span>{d.label}</span>{!d.available && <span className="mi-s coming-soon">{COMING_SOON_LABEL}</span>}</button>
+              ))}
             </div>
           )}
         </div>

@@ -60,7 +60,7 @@ worker（録音 1 本の処理。api とは別のサービス）
 
 | 段 | 関数（ファイル） | 入力 | 出力 | 使うもの |
 |---|---|---|---|---|
-| ① 文字にする | `providers.stt.transcribe`（`worker/vertex/stt.ts`） | 音声の置き場の URI | 発言（id・時刻・話者の記号・文）。`transcripts` に残す | Speech-to-Text Chirp 3（東京） |
+| ① 文字にする | `providers.stt.transcribe`（`worker/vertex/stt.ts`） | 音声の置き場の URI | 発言（id・時刻・話者の記号・文）。`transcripts` に残す | Speech-to-Text Chirp 3（us） |
 | ② 話した人を決める | `providers.speakers.assign`（`worker/vertex/speakers.ts`） | 発言、利用者の `people` | 話者の記号 → 人。新しい人は `people` に足す | Gemini 1 回 |
 | ③ 欄の値を書く | `providers.writer.write`（`worker/vertex/writer.ts`） | この利用者の録音の全部、今の値、`people`、1 回目か | 欄の値と根拠（`cite`）、失敗した項目 | Gemini（23 項目ごとに並べて呼ぶ。既定で同時に 4） |
 | ④ 型を確かめる | `normalizeValue`・`validValue`（`core/`） | 値、fields.json | 通った値。通らない値は落として数える | プログラム（zod） |
@@ -221,7 +221,7 @@ python3 eval/bench/bench.py score --gold eval/scenario/gold --submission <フォ
 - 処理の状態は `queued`／`processing`／`succeeded`／`partial`／`failed`。
 - 同じジョブが 2 回届いても、2 つ目は何もしない（期限つきの印 `lease_until`）。積み損ね・止まった処理は、見回り（Cloud Scheduler が 5 分ごと）が積み直す。
 - ログには、録音・文字起こし・指示文・値の中身を出さない。出すのは、ジョブの id、段、時間、誤りの種類、使った量だけ。
-- 保存（DB・録音の置き場）と文字起こし（Chirp 3）は東京リージョン。Gemini は `global` の呼び先の `gemini-3.8-flash`（2026-11-09 に決めた。東京で使える Gemini は 3.5 Flash だけで、3.8 Flash より高く性能も低い。Google は地域の呼び先でもその地域の中での処理を保証しない）。Vertex AI に送ったデータは学習に使われない。
+- 保存（DB・録音の置き場）は東京リージョン。文字起こし（Chirp 3）は `us`（2026-11-10 に変えた。Chirp 3 の日本語は東京では断られるようになり、使えるのは us・eu だけ）。Gemini は `global` の呼び先の `gemini-3.8-flash`（2026-11-09 に決めた。東京で使える Gemini は 3.5 Flash だけで、3.8 Flash より高く性能も低い。Google は地域の呼び先でもその地域の中での処理を保証しない）。Vertex AI に送ったデータは学習に使われない。
 - 誰が、いつ、直した・保存した・PDF を出したかを `audit_events` に残す。
 - 本物の面談の記録は、bench の判定役（Claude）など Google Cloud の外のサービスに送らない。
 
