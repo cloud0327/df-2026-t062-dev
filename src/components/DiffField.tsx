@@ -109,7 +109,7 @@ export function DiffField(p: Props) {
           </div>
           <textarea
             ref={ta}
-            aria-label={p.label}
+            aria-label={`${p.label}${hunks.length ? '（変更あり。変更箇所を選択すると比較できます）' : ''}`}
             value={text}
             disabled={p.disabled}
             onChange={(e) => { setUndo(null); setNote(''); p.onChange(e.target.value) }}
@@ -127,7 +127,9 @@ export function DiffField(p: Props) {
             <div role="dialog" aria-label="変更の中身" style={{ position: 'relative', border: '1px solid #D3D9DF', borderRadius: 8, background: '#FFFFFF', boxShadow: '0 6px 20px rgba(0,0,0,0.14)' }}>
               <div aria-hidden="true" style={{ position: 'absolute', top: -7, left: 44, width: 12, height: 12, background: '#FFFFFF', borderLeft: '1px solid #D3D9DF', borderTop: '1px solid #D3D9DF', transform: 'rotate(45deg)' }} />
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', color: '#5B6672', ...(t ? { fontSize: 15, padding: '10px 14px' } : { fontSize: 12, padding: '6px 10px' }) }}>
-                <strong style={{ color: '#1C2229' }}>{pop.h.n} {pop.h.kind}{edited(pop.h) ? '（ケアマネが直した）' : ''}</strong>
+                <strong style={{ color: '#1C2229' }}>
+  {edited(pop.h) ? '✎ 手動修正' : '↻ AI更新'}：{pop.h.n} {pop.h.kind}
+</strong>
                 <span>{p.batch}</span>
                 <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                   <button type="button" aria-label="前の変更" disabled={pop.k <= 0} onClick={() => setOpen(pop!.k - 1)} style={nav(pop.k <= 0)}>‹</button>

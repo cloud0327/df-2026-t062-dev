@@ -1,13 +1,16 @@
 // iPad ②③ 用紙（キャンバス PadWork・PadRec）と、録音から用紙へ書く流れ A〜E（PadFlow1〜5）。
 // iPad でできることは 2 つだけ: 録音するかしないか、用紙を書き換えるか。
 import { useEffect, useRef, useState } from 'react'
+import { FieldConflicts } from '../form/FieldConflicts.tsx'
 import { FormPage } from '../form/FormPage.tsx'
 import { useClient } from '../form/useClient.ts'
 import { useDocument } from '../form/useDocument.ts'
 import { useRecorder } from '../form/useRecorder.ts'
 import { api } from '../lib/api.ts'
 import { linkProps } from '../lib/router.tsx'
+import { incompleteFieldNames } from '../lib/jobStatus.ts'
 import { countText } from '../components/Chrome.tsx'
+import { SyncDifferences } from '../components/SyncDifferences.tsx'
 
 export function PadWork({ clientId }: { clientId: string }) {
   const [tab, setTab] = useState<'assessment' | 'admission'>('assessment')
@@ -33,6 +36,7 @@ export function PadWork({ clientId }: { clientId: string }) {
   const pages = state.pages
   const doc = state.doc
   const job = jobs[0]
+  const incompleteNames = job && (job.status === 'partial' || job.status === 'failed') ? incompleteFieldNames(job.incompleteFields) : []
   const running = job && (job.status === 'queued' || job.status === 'processing')
   const phase = recorder.phase === 'rec' ? 'rec'
     : recorder.phase === 'upload' ? 'upload'
@@ -130,18 +134,33 @@ export function PadWork({ clientId }: { clientId: string }) {
       {phase === 'done' && job && (
         <div role="status" className="strip" style={{ background: '#FFF4E5', borderBottom: '1px solid #F0C78A' }}>
           <span aria-hidden="true" style={{ flex: '0 0 auto', width: 28, height: 28, borderRadius: '50%', background: '#E8912D', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5 9-10" /></svg></span>
-          <div style={{ flex: '1 1 auto', minWidth: 0, fontSize: 16 }}><strong>録音から、用紙の {job.batch?.changes ?? 0} か所を書きました。</strong><br /><span style={{ fontSize: 15, color: '#5C3A00' }}>橙色が AI の書いたところです。{job.batch?.kept ? `あなたが先に書いた ${job.batch.kept} か所（黄色）は、そのままにしています。` : ''}</span></div>
+          <div style={{ flex: '1 1 auto', minWidth: 0, fontSize: 16 }}><strong>{job.status === 'partial' ? `一部を処理できませんでした。用紙の ${job.batch?.changes ?? 0} か所を書きました。` : `録音から、用紙の ${job.batch?.changes ?? 0} か所を書きました。`}</strong><br /><span style={{ fontSize: 15, color: '#5C3A00' }}>{incompleteNames.length ? `AIが反映できなかった欄は赤枠です: ${incompleteNames.join('、')}` : job.status === 'partial' ? 'AI が反映できなかった欄があります。用紙を確認してください。' : `橙色が AI の書いたところです。${job.batch?.kept ? `あなたが先に書いた ${job.batch.kept} か所（黄色）は、そのままにしています。` : ''}`}</span></div>
           <button type="button" onClick={() => setDismissed((s) => new Set(s).add(job.id))} style={{ flex: '0 0 auto', font: 'inherit', fontSize: 15, fontWeight: 700, border: 0, background: 'transparent', color: '#874600', cursor: 'pointer', minHeight: 44, padding: '0 6px' }}>OK</button>
+        </div>
+      )}
+      {job?.status === 'failed' && !dismissed.has(job.id) && (
+        <div role="alert" className="strip" style={{ background: '#FDE8E7', color: '#A3261C' }}>
+          <div style={{ flex: '1 1 auto' }}>{incompleteNames.length ? `AIが反映できなかった欄は赤枠です: ${incompleteNames.join('、')}。録音し直せます。` : 'AI 処理を完了できませんでした。録音は保存されています。担当者に確認してください。'}</div>
+          <button type="button" onClick={() => setDismissed((s) => new Set(s).add(job.id))}>閉じる</button>
         </div>
       )}
       {recorder.phase === 'error' && (
         <div role="alert" className="strip" style={{ background: '#FDE8E7', color: '#A3261C' }}>
-          <div style={{ flex: '1 1 auto' }}>{recorder.error}。録音は iPad に残っています。電波のあるところで、もう一度開いてください。</div>
+          <div style={{ flex: '1 1 auto' }}>{recorder.error}。録音は iPad に残っています。通信状態を確認して再試行してください。</div>
+          <button type="button" onClick={recorder.retry} disabled={recorder.busy} className="tb">再試行</button>
           <button type="button" onClick={recorder.reset} style={{ font: 'inherit', fontSize: 15, fontWeight: 700, border: 0, background: 'transparent', color: '#A3261C', minHeight: 44 }}>閉じる</button>
         </div>
       )}
 
+      <FieldConflicts state={state} />
+      {state.error && <div role="alert" className="strip" style={{ background: '#FDE8E7', color: '#A3261C' }}>うまく送れませんでした（{state.error}）。</div>}
+      {recorder.phase === 'rec' && recorder.storageWarning && (
+        <div role="alert" className="strip" style={{ background: '#FFF4E5' }}>録音を端末に保存できていません。録音を止めるまで、この画面を開いたままにしてください。</div>
+      )}
       <div ref={scroller} onScroll={onScroll} style={{ flex: '1 1 auto', minHeight: 0, overflow: 'auto', padding: '16px 16px 150px', position: 'relative' }}>
+        {client?.documents.find((d) => d.kind === 'admission') && (
+          <SyncDifferences targetId={client.documents.find((d) => d.kind === 'admission')!.id} refreshKey={state.doc} hasLocalEdits={state.hasLocalEdits} onApplied={() => { void state.reload(); setSaved(false) }} />
+        )}
         {isAdm && doc && (
           <div role="status" style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: '#FFF4E5', border: '1px solid #F0C78A', borderRadius: 12, padding: '12px 14px', fontSize: 15, lineHeight: 1.5, marginBottom: 12 }}>
             <span aria-hidden="true" style={{ flex: '0 0 auto', width: 24, height: 24, borderRadius: 7, background: '#1F2430', color: '#FFFFFF', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>AI</span>
@@ -157,10 +176,10 @@ export function PadWork({ clientId }: { clientId: string }) {
                 <span>{isAdm ? p.title : `${p.no} ・ ${p.title}`}</span>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: 14, color: '#5B6672' }}>{dirty ? countText(c) : savedPages.has(p.no) ? '保存しました' : ''}</span>
-                  <button type="button" className="pgsave" disabled={!dirty || phase === 'writing'} onClick={async () => { if (await state.savePage(p.no)) setSavedPages((s) => new Set(s).add(p.no)) }} style={dirty ? undefined : { opacity: 0.35, cursor: 'default' }}>このページを保存</button>
+                  <button type="button" className="pgsave" disabled={!dirty || phase === 'writing'} onClick={async () => { if (!await state.savePage(p.no)) return; setSavedPages((s) => new Set(s).add(p.no)) }} style={dirty ? undefined : { opacity: 0.35, cursor: 'default' }}>このページを保存</button>
                 </span>
               </div>
-              <FormPage page={p} state={state} touch disabled={phase === 'writing'} batchLabel={batchLabel} glow={phase === 'done'} />
+              <FormPage page={p} state={state} touch disabled={phase === 'writing'} batchLabel={batchLabel} glow={phase === 'done'} incompleteFields={incompleteNames.length ? job?.incompleteFields : undefined} />
             </div>
           )
         })}
