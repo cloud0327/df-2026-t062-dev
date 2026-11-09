@@ -290,6 +290,7 @@ export function PcWork({ clientId, staffName }: { clientId: string, staffName: s
 
         <PetHelper available={assessmentReady} clientName={client?.name ?? ''} review={review} topics={topics}
           onJump={jumpToField} onPreview={stagePreview} verifiedSources={verifiedSources}
+          chat={{ documentId: doc?.id === docId ? doc?.id : undefined, current: state.current, onSet: state.setValue }}
           onIdentity={(sha, confirmed) => {
             setCandidateError('')
             setVerifiedSources((previous) => {

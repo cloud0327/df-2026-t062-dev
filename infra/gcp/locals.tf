@@ -32,6 +32,11 @@ locals {
     CLOUD_SQL_INSTANCE  = google_sql_database_instance.main.connection_name
     DB_USER             = local.api_db_user
     DB_NAME             = google_sql_database.app.name
+    # 書き方の相談（POST /api/documents/:id/chat）は api から Gemini を呼ぶ。worker と同じモデル・場所を使う
+    AI_PROVIDER          = var.ai_provider
+    GOOGLE_CLOUD_PROJECT = var.project_id
+    GEMINI_MODEL         = var.gemini_model
+    GEMINI_LOCATION      = var.gemini_location
   }
 
   worker_env = {

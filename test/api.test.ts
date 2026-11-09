@@ -23,6 +23,8 @@ const TOKEN = 'Bearer dev:kato@example.com'
 const OTHER = 'Bearer dev:other@example.com'
 let failNextEnqueue = false
 const enqueues = new Map<string, number>()
+/** チャットに渡った指示文（中身は fake の答え） */
+const chatPrompts: string[] = []
 
 const call = async (path: string, init: RequestInit & { token?: string } = {}) => {
   const res = await fetch(`${origin}${path}`, {
@@ -70,6 +72,7 @@ before(async () => {
     hasPdf = true
   }
   putFake = async (path, data) => { await storage.writeOnce('forms', path, data, 'image/png') }
+  const { fakeChat } = await import('../api/chat.ts')
   const workerDeps = { db: async () => db, storage: () => storage, providers: async () => ({ stt: new f.FakeStt(), speakers: new f.FakeSpeakers(), writer: new f.FakeWriter() }) }
   const queue = new LocalQueue((id) => runJob(workerDeps, id))
   const server = createApiServer({
@@ -86,6 +89,10 @@ before(async () => {
         await queue.enqueue(id)
       },
     }),
+    chat: async () => async (prompt, schema, input) => {
+      chatPrompts.push(prompt)
+      return fakeChat(prompt, schema, input)
+    },
     devAuth: true,
   })
   server.listen(0, '127.0.0.1')
@@ -388,4 +395,27 @@ test('認定調査票は確認した欄だけに出典を記録し、409では�
   assert.equal(cleared.fields['survey.2_2'], undefined)
   assert.equal(cleared.saved['survey.2_2'].value, '一部介助')
 
+})
+
+test('書き方の相談: 用紙と録音を読んで答え、書き換えの案を返す。用紙は変えない', { skip }, async () => {
+  // 佐藤さんには、上のテストで送った録音（fake の文字起こし）がある
+  const { id: docId } = await docOf(ids.sato)
+  const before = (await call(`/api/documents/${docId}`)).body as Doc
+  const ask = (messages: unknown, token?: string) => call(`/api/documents/${docId}/chat`, { method: 'POST', token, body: JSON.stringify({ messages }) })
+
+  const r = await ask([{ role: 'user', text: '相談内容の書き方は？' }, { role: 'pet', text: '本人の言葉で書きます。' }, { role: 'user', text: '相談内容を直して' }])
+  assert.equal(r.status, 200)
+  const body = r.body as { reply: string, proposals: { key: string, label: string, before: string | null, after: string }[] }
+  assert.ok(body.reply.length > 0)
+  assert.equal(body.proposals.length, 1)
+  const [p] = body.proposals
+  assert.equal(p.before, before.document.fields[p.key].value)
+  assert.notEqual(p.after, p.before)
+  assert.match(chatPrompts.at(-1)!, /\[r1-0001\]/, '録音の発言が指示文に入る')
+  assert.match(chatPrompts.at(-1)!, /ペット: 本人の言葉で書きます。/)
+  assert.deepEqual(((await call(`/api/documents/${docId}`)).body as Doc).document.fields, before.document.fields)
+
+  assert.equal((await ask([{ role: 'user', text: 'a' }], OTHER)).status, 404)
+  assert.equal((await ask([])).status, 400)
+  assert.equal((await ask([{ role: 'pet', text: '最後がペット' }])).status, 400)
 })

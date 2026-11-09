@@ -65,7 +65,7 @@ GitHubのデプロイ用サービスアカウントには、対象のArtifact Re
 
 | サービスアカウント | 付与する権限 |
 |---|---|
-| `cloud-run-api-runtime`（api、移行ジョブ） | `cloudsql.client` と `cloudsql.instanceUser`（プロジェクト単位）、`source` と `output` に `storage.objectAdmin`、`forms` に `storage.objectViewer`（読むだけ）、自分自身に `iam.serviceAccountTokenCreator`（録音の送信 URL と、様式の画像の期限つきの URL の署名）、キューに `cloudtasks.enqueuer`、`tasks-invoker` に `iam.serviceAccountUser` |
+| `cloud-run-api-runtime`（api、移行ジョブ） | `cloudsql.client` と `cloudsql.instanceUser`（プロジェクト単位）、`source` と `output` に `storage.objectAdmin`、`forms` に `storage.objectViewer`（読むだけ）、自分自身に `iam.serviceAccountTokenCreator`（録音の送信 URL と、様式の画像の期限つきの URL の署名）、キューに `cloudtasks.enqueuer`、`tasks-invoker` に `iam.serviceAccountUser`、`aiplatform.user`（書き方の相談で Gemini を呼ぶ） |
 | `cloud-run-worker-runtime`（worker） | `cloudsql.client` と `cloudsql.instanceUser`、`source` に `storage.objectViewer`、`work` に `storage.objectAdmin`、`aiplatform.user`、Speech-to-Text（既定は `roles/speech.client`。workerが認識器を作る場合は変数 `worker_speech_role` を `roles/speech.editor` にする）、キューに `cloudtasks.enqueuer`、`tasks-invoker` に `iam.serviceAccountUser` |
 | `tasks-invoker`（Cloud TasksとSchedulerのOIDCの身元） | workerのCloud Runサービスにだけ `run.invoker` |
 | `github-api-deploy`（デプロイ用） | 上の表のapiと同じ範囲を、workerサービスと移行ジョブにも付ける（`run.developer`）。workerのヘルスチェック呼び出し用にworkerだけ `run.invoker`。workerと移行ジョブの実行用サービスアカウントには `serviceAccountUser` |

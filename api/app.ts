@@ -9,6 +9,7 @@ import * as forms from '../db/forms.ts'
 import { tx, type Db } from '../db/pool.ts'
 import * as repo from '../db/repo.ts'
 import type { Verifier } from './auth.ts'
+import { answerChat, fakeChat, type ChatAsk } from './chat.ts'
 import { FormUnavailable, makePdf } from './pdf.ts'
 import type { Queue } from './queue.ts'
 import { dailyWindow, LocalStorage, type Storage } from './storage.ts'
@@ -18,6 +19,8 @@ export interface ApiDeps {
   verifier: () => Verifier
   storage: () => Storage
   queue: () => Queue
+  /** 書き方の相談で Gemini に聞く。なければ試しの答え（fake） */
+  chat?: () => Promise<ChatAsk>
   /** AUTH_MODE=dev のとき、メールでケアマネを引く */
   devAuth?: boolean
 }
@@ -44,6 +47,11 @@ const RecordingInput = z.object({
   mime: z.string().min(1).max(100),
   deviceRecordingId: z.string().uuid().optional(),
   expiredUploadUrl: z.string().max(4096).optional(),
+})
+// 書き方の相談。やり取りは画面が持っていて、毎回全部を送る（最後はケアマネの相談）
+const ChatInput = z.object({
+  messages: z.array(z.object({ role: z.enum(['user', 'pet']), text: z.string().trim().min(1).max(4000) })).min(1).max(40)
+    .refine((m) => m.at(-1)?.role === 'user'),
 })
 const CompleteInput = z.object({ durationMs: z.number().int().min(0).nullish(), bytes: z.number().int().positive().optional() })
 
@@ -153,6 +161,15 @@ export function createApp(deps: ApiDeps) {
     for (const ch of changes) if (!validValue(ch.key, ch.value)) throw new repo.BadRequest(`値の形が違います: ${ch.key}`)
     const r = await repo.patchFields(db, staff, c.req.param('id')!, changes.map((ch) => ({ key: ch.key, value: ch.value ?? null, base: ch.base ?? null, mode: ch.mode })))
     return json(c, { ...r, document: await repo.getDocument(db, staff.officeId, c.req.param('id')!) })
+  }))
+
+  // 書き方の相談。用紙の値と録音を読んで答え、書き換えの案を返す（用紙は変えない）
+  app.post('/api/documents/:id/chat', authed(async (c, staff, db) => {
+    const { messages } = await body(c, ChatInput)
+    const document = await repo.getDocument(db, staff.officeId, c.req.param('id')!)
+    const recordings = await repo.clientTranscripts(db, staff.officeId, document.clientId)
+    const ask = deps.chat ? await deps.chat() : fakeChat
+    return json(c, await answerChat({ ask, document, recordings, messages }))
   }))
 
   app.post('/api/documents/:id/survey-import', authed(async (c, staff, db) => {

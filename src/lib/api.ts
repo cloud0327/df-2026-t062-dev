@@ -3,6 +3,7 @@ import type { ClientSummary, DocumentView, JobView, SlotEdit, SlotEditResult, St
 import type { FormAssetsView, FormKind, FormVersionView } from '../../core/form.ts'
 
 import type { SurveyImportKey, SurveySource } from '../../core/survey-import.ts'
+import type { ChatMessage, ChatReply } from '../../api/chat.ts'
 
 export type { ClientSummary, DocumentView, JobView, SlotEdit, SlotEditResult, Staff, SyncDifference }
 
@@ -68,6 +69,7 @@ export const api = {
     req<{ differences: SyncDifference[], document: DocumentView }>('POST', `/api/documents/${id}/sync-decisions`, input),
   patch: (id: string, changes: { key: string, value: unknown, base: unknown, mode?: 'edit' | 'revert' }[]) =>
     req<{ syncedTo: string[], document: DocumentView }>('PATCH', `/api/documents/${id}/fields`, { changes }),
+  chat: (id: string, messages: ChatMessage[]) => req<ChatReply>('POST', `/api/documents/${id}/chat`, { messages }),
   importSurvey: (id: string, body: Pick<SurveySource, 'fileName' | 'sha256' | 'recordedOn'> & {
     changes: { key: SurveyImportKey, choice: number, base: unknown }[],
   }) => req<{ document: DocumentView }>('POST', `/api/documents/${id}/survey-import`, body),

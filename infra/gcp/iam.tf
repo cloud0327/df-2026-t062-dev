@@ -172,6 +172,13 @@ resource "google_storage_bucket_iam_member" "worker_work" {
   member = "serviceAccount:${google_service_account.worker.email}"
 }
 
+# 書き方の相談で、api が Gemini を呼ぶ
+resource "google_project_iam_member" "api_vertex" {
+  project = var.project_id
+  role    = "roles/aiplatform.user"
+  member  = "serviceAccount:${google_service_account.runtime.email}"
+}
+
 resource "google_project_iam_member" "worker_vertex" {
   project = var.project_id
   role    = "roles/aiplatform.user"

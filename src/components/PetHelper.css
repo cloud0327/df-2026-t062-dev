@@ -188,3 +188,30 @@ button.assistant-card:hover, .assistant-header button:hover { border-color: #bda
   border: 1px solid #e8b8b8; border-radius: 9px; pointer-events: none;
 }
 .assistant-source-row { margin: 5px 0; }
+
+/* 書き方を相談する */
+.assistant-chat { display: flex; flex-direction: column; min-height: calc(100% - 60px); }
+.assistant-chat .assistant-message { margin-bottom: 14px; }
+.assistant-panel .assistant-chat-log { display: grid; gap: 12px; margin-bottom: 12px; }
+.assistant-chat-row { display: grid; gap: 8px; }
+.assistant-chat-bubble { margin: 0; padding: 10px 14px; border-radius: 16px; font-size: 15px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; box-shadow: var(--pet-shadow); }
+.assistant-chat-user .assistant-chat-bubble { justify-self: end; max-width: 85%; background: #580bdd; color: #fff; border-bottom-right-radius: 4px; }
+.assistant-chat-pet .assistant-chat-bubble { justify-self: start; max-width: 92%; background: #fff; border-bottom-left-radius: 4px; }
+.assistant-chat-thinking { display: inline-flex; align-items: center; gap: 9px; }
+.assistant-chat-thinking .assistant-spinner { width: 16px; height: 16px; }
+.assistant-chat-card { display: grid; gap: 6px; padding: 11px 13px; background: var(--pet-card); border: 1px solid var(--pet-line); border-radius: 14px; box-shadow: var(--pet-shadow); }
+.assistant-chat-card[data-state=applied] { border-color: #8abd9c; background: #f3fbf6; }
+.assistant-chat-field { display: inline-flex; align-items: center; gap: 4px; justify-self: start; padding: 0; border: 0; background: none; font-size: 15px; font-weight: 800; color: #4d12bc; }
+strong.assistant-chat-field { color: var(--pet-ink); }
+.assistant-chat-card p { margin: 0; font-size: 14px; line-height: 1.55; overflow-wrap: anywhere; }
+.assistant-chat-card p > span { display: inline-block; width: 1.3em; font-weight: 800; }
+.assistant-chat-del { color: #8f2121; background: #fff3f3; border-radius: 6px; padding: 2px 6px; text-decoration: line-through; text-decoration-color: #c98a8a; }
+.assistant-chat-del > span { text-decoration: none; }
+.assistant-chat-ins { color: #17532f; background: #eefaf2; border-radius: 6px; padding: 2px 6px; }
+.assistant-chat-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 2px; }
+.assistant-chat-apply { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 6px 14px; border: 0; border-radius: 10px; background: #580bdd; color: #fff !important; font-weight: 800; }
+.assistant-chat-done { display: inline-flex; align-items: center; gap: 5px; color: #17633a; font-weight: 800; font-size: 14px; }
+.assistant-chat-undo { min-height: 36px; padding: 4px 12px; border: 1px solid #b9a1e8; border-radius: 9px; background: #faf7ff; color: #4d12bc !important; font-weight: 800; }
+.assistant-chat-form { position: sticky; bottom: -22px; display: grid; gap: 8px; margin-top: auto; padding: 10px 0 4px; background: linear-gradient(180deg, transparent, #f5f2fd 14px); }
+.assistant-chat-form textarea { width: 100%; box-sizing: border-box; resize: vertical; min-height: 72px; padding: 10px 12px; border: 1px solid #cec0e9; border-radius: 12px; background: #fff; font: inherit; font-size: 15px; }
+.assistant-panel .assistant-chat-form .assistant-primary { min-height: 46px; font-size: 17px; }
