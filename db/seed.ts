@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import type { Db } from './pool.ts'
-import { createPool } from './pool.ts'
+import { closePool, createPool } from './pool.ts'
 import { seedForms } from '../forms/admin/seed.ts'
 import { applyBatch, createClient, saveDocument, staffByAuth, type Staff } from './repo.ts'
 
@@ -70,14 +70,17 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     process.exit(1)
   }
   const db = await createPool()
-  const exists = (await db.query('SELECT count(*) AS n FROM offices')).rows[0].n
-  if (Number(exists) > 0 && !process.argv.includes('--again')) {
-    console.log('もう入っています（もう一度入れるときは --again）')
-  } else {
-    const emailArg = process.argv.find((a) => a.startsWith('--email='))?.slice(8)
-    const uidArg = process.argv.find((a) => a.startsWith('--uid='))?.slice(6)
-    const r = await seed(db, { email: emailArg, authUid: uidArg })
-    console.log(`見本のデータを入れました（事業所 ${r.officeId}、ケアマネ ${r.staff.email}）`)
+  try {
+    const exists = (await db.query('SELECT count(*) AS n FROM offices')).rows[0].n
+    if (Number(exists) > 0 && !process.argv.includes('--again')) {
+      console.log('もう入っています（もう一度入れるときは --again）')
+    } else {
+      const emailArg = process.argv.find((a) => a.startsWith('--email='))?.slice(8)
+      const uidArg = process.argv.find((a) => a.startsWith('--uid='))?.slice(6)
+      const r = await seed(db, { email: emailArg, authUid: uidArg })
+      console.log(`見本のデータを入れました（事業所 ${r.officeId}、ケアマネ ${r.staff.email}）`)
+    }
+  } finally {
+    await closePool(db)
   }
-  await db.end()
 }
