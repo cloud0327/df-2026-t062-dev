@@ -8,7 +8,7 @@ import './PetHelper.css'
 const menus = [
   { id: 'documents', icon: 'file-earmark-arrow-down', title: '書類を取り込む' },
   { id: 'review', icon: 'check2-circle', title: '確認する' },
-  { id: 'interview', icon: 'stars', title: '相談する' },
+  { id: 'interview', icon: 'stars', title: '面談のヒント' },
 ] as const
 
 type Menu = typeof menus[number]['id']
@@ -54,7 +54,7 @@ export function PetHelper({ available, clientName, review, topics, onJump, onPre
         {menu && (
           <header className="assistant-header">
             <button ref={back} type="button" aria-label="メニューに戻る" onClick={() => open(null)}><PetIcon name="arrow-left" /></button>
-            <h2 id="assistant-title">{menu === 'interview' ? '面談のヒント' : menus.find(({ id }) => id === menu)?.title}</h2>
+            <h2 id="assistant-title">{menus.find(({ id }) => id === menu)?.title}</h2>
           </header>
         )}
         {!menu && (
