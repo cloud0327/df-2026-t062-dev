@@ -207,3 +207,20 @@
   background: #f7f9ff;
   font: inherit;
 }
+
+.survey-import,
+.survey-import-review {
+  display: grid;
+  gap: 12px;
+  overflow-wrap: anywhere;
+}
+.survey-import label { display: grid; gap: 4px; }
+.survey-import label.survey-check { display: flex; align-items: baseline; }
+.survey-import input[type="file"] { max-width: 100%; }
+.survey-import p { margin: 0; }
+.survey-import fieldset { min-width: 0; border: 1px solid #DCE2EB; border-radius: 8px; }
+.survey-import fieldset > * + * { margin-top: 6px; }
+.survey-import img { display: block; width: 100%; margin-top: 6px; border: 1px solid #DCE2EB; }
+.survey-import summary { cursor: pointer; }
+.survey-import-error { color: #A3261C; }
+.survey-import button:disabled { opacity: .55; cursor: not-allowed; }

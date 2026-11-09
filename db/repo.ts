@@ -3,6 +3,7 @@ import { planBatch, sameValue, type BatchPlan, type CurrentField } from '../core
 import { saveOneHunk } from '../core/diff.ts'
 import { isShared } from '../core/fields.ts'
 import { slotPages, type FormKind } from '../core/form.ts'
+import type { SurveySource } from '../core/survey-import.ts'
 import { countRequired } from '../core/required.ts'
 import { applyChanges, editSlot, slotKeys, type Values, type Who } from '../core/slots.ts'
 import { loadFormDef, publishedVersionId } from './forms.ts'
@@ -12,7 +13,7 @@ type Q = Db | Tx
 
 export interface Staff { id: string, officeId: string, name: string, email: string | null, role: string, officeName: string }
 
-export interface FieldRow { value: unknown, aiValue: unknown, by: Who, batchId: string | null, updatedAt: string }
+export interface FieldRow { value: unknown, aiValue: unknown, by: Who, batchId: string | null, updatedAt: string, surveySource?: SurveySource }
 export interface SavedRow { value: unknown, by: Who }
 
 export interface DocumentView {
@@ -163,13 +164,14 @@ async function lockDocument(c: Tx, officeId: string, documentId: string) {
 
 async function readFields(db: Q, documentId: string, clientId: string): Promise<Record<string, FieldRow>> {
   const r = await db.query(
-    `SELECT key, value, ai_value, by, batch_id, updated_at FROM field_values
+    `SELECT key, value, ai_value, by, batch_id, updated_at, cite FROM field_values
      WHERE client_id = $2 AND (document_id = $1 OR document_id IS NULL)`,
     [documentId, clientId],
   )
   const out: Record<string, FieldRow> = {}
   for (const row of r.rows) {
-    out[row.key] = { value: row.value, aiValue: row.ai_value, by: row.by, batchId: row.batch_id, updatedAt: new Date(row.updated_at).toISOString() }
+    out[row.key] = { value: row.value, aiValue: row.ai_value, by: row.by, batchId: row.batch_id, updatedAt: new Date(row.updated_at).toISOString(),
+      ...(row.cite?.kind === 'survey-import' ? { surveySource: row.cite as SurveySource } : {}) }
   }
   return out
 }
@@ -229,7 +231,10 @@ async function writeField(c: Tx, officeId: string, clientId: string, documentId:
        ai_value = coalesce(EXCLUDED.ai_value, field_values.ai_value),
        by = EXCLUDED.by,
        batch_id = coalesce(EXCLUDED.batch_id, field_values.batch_id),
-       cite = coalesce(EXCLUDED.cite, field_values.cite),
+       cite = CASE
+         WHEN field_values.cite->>'kind' = 'survey-import' THEN EXCLUDED.cite
+         ELSE coalesce(EXCLUDED.cite, field_values.cite)
+       END,
        updated_by = EXCLUDED.updated_by,
        updated_at = now()`,
     [officeId, clientId, docId, key, JSON.stringify(value), extra.aiValue === undefined ? null : JSON.stringify(extra.aiValue), by, extra.batchId ?? null, extra.cite === undefined ? null : JSON.stringify(extra.cite), staffId],
@@ -257,6 +262,7 @@ export interface FieldChange {
   /** 画面がこの直しの元にした値（null は空）。サーバーの今の値と違えば Conflict（409） */
   base: unknown
   mode?: 'edit' | 'revert'
+  surveySource?: SurveySource
 }
 
 /**
@@ -271,6 +277,7 @@ export async function patchFields(db: Db, staff: Staff, documentId: string, chan
     const saved = await readSaved(c, d.id)
     const fields = await readFields(c, d.id, d.clientId)
     for (const ch of changes) {
+      if (ch.surveySource && d.kind !== 'assessment') throw new BadRequest('認定調査票はアセスメントに取り込めます')
       if (!allowed.has(ch.key)) throw new BadRequest(`この書類にない欄です: ${ch.key}`)
       if (!sameValue(fields[ch.key]?.value ?? null, ch.base ?? null)) throw new Conflict(ch.key)
     }
@@ -278,7 +285,7 @@ export async function patchFields(db: Db, staff: Staff, documentId: string, chan
       const back = ch.mode === 'revert' && saved[ch.key] && sameValue(saved[ch.key].value, ch.value)
       const cur = fields[ch.key]
       const by: Who = back ? saved[ch.key].by : ch.mode === 'revert' && cur ? cur.by : 'cm'
-      await writeField(c, staff.officeId, d.clientId, d.id, ch.key, ch.value, by, staff.id)
+      await writeField(c, staff.officeId, d.clientId, d.id, ch.key, ch.value, by, staff.id, { cite: ch.surveySource })
     }
     const values = applyChanges(plainValues(fields), changes.map((ch) => ({ key: ch.key, value: ch.value })))
     return { syncedTo: await afterEdit(c, staff, d, changes.map((ch) => ch.key), values) }
