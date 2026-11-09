@@ -4,7 +4,7 @@
 // 同時に 2 つ走らないように advisory lock を取る。移行は足すだけにする（戻せるように）。
 import { readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { createPool, type Db } from './pool.ts'
+import { closePool, createPool, type Db } from './pool.ts'
 
 const DIR = new URL('./migrations/', import.meta.url)
 
@@ -39,15 +39,18 @@ export async function migrate(db: Db, log: (m: string) => void = () => {}): Prom
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const db = await createPool()
-  if (process.env.DB_SCHEMA) await db.query(`CREATE SCHEMA IF NOT EXISTS ${process.env.DB_SCHEMA}`)
-  const applied = await migrate(db, console.log)
-  if (!applied.length) console.log('新しい移行はありません')
-  if (process.argv.includes('--forms')) {
-    const { seedForms } = await import('../forms/admin/seed.ts')
-    for (const [kind, r] of Object.entries(await seedForms(db))) {
-      const note = !r.created ? '（変わっていません）' : r.version > 1 ? '（新しい版。前の版を指す書類は npm run forms:rebase で移す）' : '（登録しました）'
-      console.log(`様式 ${kind}: v${r.version}${note}`)
+  try {
+    if (process.env.DB_SCHEMA) await db.query(`CREATE SCHEMA IF NOT EXISTS ${process.env.DB_SCHEMA}`)
+    const applied = await migrate(db, console.log)
+    if (!applied.length) console.log('新しい移行はありません')
+    if (process.argv.includes('--forms')) {
+      const { seedForms } = await import('../forms/admin/seed.ts')
+      for (const [kind, r] of Object.entries(await seedForms(db))) {
+        const note = !r.created ? '（変わっていません）' : r.version > 1 ? '（新しい版。前の版を指す書類は npm run forms:rebase で移す）' : '（登録しました）'
+        console.log(`様式 ${kind}: v${r.version}${note}`)
+      }
     }
+  } finally {
+    await closePool(db)
   }
-  await db.end()
 }
