@@ -99,7 +99,7 @@ export function SurveyImport({ document, clientName, beforeApply, onApplied }: S
         <input type="file" accept="application/pdf,.pdf" disabled={busy !== null}
           onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ''; if (file) void choose(file) }} />
       </label>
-      <p>広島市版のテキスト付きPDF（10 MBまで）。移動・食事摂取・排尿の3項目を読み取ります。</p>
+      <p>広島市版のテキスト付きPDF（10 MBまで）。裏面の生活機能、第2群の12項目（2-1〜2-12）を読み取ります。</p>
       {busy === 'reading' && <p role="status">読み取り中です…</p>}
       {error && <p role="alert" className="survey-import-error">{error}</p>}
       {message && <p role="status">{message}</p>}

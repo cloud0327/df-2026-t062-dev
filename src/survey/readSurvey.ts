@@ -1,5 +1,6 @@
 import { getDocument, GlobalWorkerOptions, type PDFPageProxy } from 'pdfjs-dist'
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+import { choicesOf, spec } from '../../core/fields.ts'
 import { SURVEY_IMPORT_KEYS, type SurveyImportKey } from '../../core/survey-import.ts'
 import { readRowMarks } from './marks.ts'
 
@@ -7,7 +8,21 @@ GlobalWorkerOptions.workerSrc = pdfWorker
 
 const MAX_BYTES = 10 * 1024 * 1024
 const SCALE = 3
-const labels = ['2.移動', '4.食事摂取', '5.排尿']
+// 裏面（p.2 生活機能）の第2群の行の印字文言。compact() で正規化した PDF のテキストと比較する。
+const rowLabels: Record<SurveyImportKey, string> = {
+  'survey.2_1': '1.移乗',
+  'survey.2_2': '2.移動',
+  'survey.2_3': '3.えん下',
+  'survey.2_4': '4.食事摂取',
+  'survey.2_5': '5.排尿',
+  'survey.2_6': '6.排便',
+  'survey.2_7': '7.口腔清潔',
+  'survey.2_8': '8.洗顔',
+  'survey.2_9': '9.整髪',
+  'survey.2_10': '10.上衣の着脱',
+  'survey.2_11': '11.ズボン等の着脱',
+  'survey.2_12': '12.外出頻度',
+}
 const compact = (text: string) => text.normalize('NFKC').replace(/\s/g, '')
 
 interface Candidate {
@@ -77,11 +92,14 @@ export async function readSurvey(file: File): Promise<SurveyPreview> {
     const image = context.getImageData(0, 0, canvas.width, canvas.height)
 
     const notes = pdf.numPages >= 3 ? await textOn(await pdf.getPage(3)) : []
-    const candidates = SURVEY_IMPORT_KEYS.map((key, i): Candidate => {
-      const anchors = secondText.filter((t) => t.x > 12 && t.x < 65 && t.top > 60 && t.top < 220 && compact(t.text) === labels[i])
+    const candidates = SURVEY_IMPORT_KEYS.map((key): Candidate => {
+      const field = spec(key)
+      const choices = field ? choicesOf(field) : []
+      if (choices.length === 0) throw new Error(`選択肢が未定義の項目があります: ${key}`)
+      const anchors = secondText.filter((t) => t.x > 12 && t.x < 65 && t.top > 60 && t.top < 350 && compact(t.text) === rowLabels[key])
       if (anchors.length !== 1) throw new Error('生活機能の欄を確認できませんでした。')
       const y = anchors[0].top * SCALE
-      const marks = readRowMarks(image, y, SCALE)
+      const marks = readRowMarks(image, y, SCALE, choices.length)
       const marked = marks.flatMap((m, index) => m !== 'empty' ? [index + 1] : [])
       const choice = marked.length === 1 && marks[marked[0] - 1] === 'clear' ? marked[0] : null
       const reason = choice !== null ? null : marked.length > 1 ? '複数の印があります'
