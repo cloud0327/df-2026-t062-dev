@@ -51,4 +51,4 @@
 |---|---|---|
 | `POST /tasks/jobs/:id/run` | Cloud Tasks（OIDC） | 録音 1 本の処理。応答の前に終える。失敗は 500（Cloud Tasks が間をあけてやり直す） |
 | `POST /tasks/reconcile` | Cloud Scheduler（5 分ごと） | 積み損ね・止まった処理を積み直す |
-| `GET /healthz` | — | 動いているか |
+| `GET /health` | — | 動いているか |

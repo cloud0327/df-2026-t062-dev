@@ -537,38 +537,72 @@ export async function createAdmission(db: Db, staff: Staff, clientId: string) {
 
 // ---------- 録音とジョブ ----------
 
-export async function createRecording(db: Q, staff: Staff, clientId: string, mime: string) {
+export async function createRecording(db: Tx, staff: Staff, clientId: string, mime: string, deviceRecordingId?: string) {
   const doc = (await db.query("SELECT id FROM documents WHERE client_id = $1 AND office_id = $2 AND kind = 'assessment'", [clientId, staff.officeId])).rows[0]
   if (!doc) throw new NotFound()
   const ext = mime.includes('mp4') || mime.includes('m4a') || mime.includes('aac') ? 'm4a' : mime.includes('webm') ? 'webm' : mime.includes('ogg') ? 'ogg' : mime.includes('wav') ? 'wav' : 'bin'
+  const inserted = (await db.query(
+    `INSERT INTO recordings (office_id, client_id, document_id, object_path, mime, created_by, device_recording_id)
+     VALUES ($1,$2,$3,'',$4,$5,$6)
+     ON CONFLICT (office_id, client_id, device_recording_id) DO NOTHING RETURNING id`,
+    [staff.officeId, clientId, doc.id, mime, staff.id, deviceRecordingId ?? null],
+  )).rows[0]
+  if (inserted) {
+    const objectPath = `recordings/${staff.officeId}/${clientId}/${inserted.id}.${ext}`
+    await db.query('UPDATE recordings SET object_path = $1 WHERE id = $2', [objectPath, inserted.id])
+    await audit(db, staff, staff.officeId, 'recording.start', { clientId, documentId: doc.id })
+    return { id: inserted.id as string, objectPath, mime, status: 'uploading', uploadUrl: null }
+  }
   const r = (await db.query(
-    "INSERT INTO recordings (office_id, client_id, document_id, object_path, mime, created_by) VALUES ($1,$2,$3,'',$4,$5) RETURNING id",
-    [staff.officeId, clientId, doc.id, mime, staff.id],
+    `SELECT id, object_path, mime, status, upload_url FROM recordings
+     WHERE office_id = $1 AND client_id = $2 AND device_recording_id = $3 FOR UPDATE`,
+    [staff.officeId, clientId, deviceRecordingId],
   )).rows[0]
-  const objectPath = `recordings/${staff.officeId}/${clientId}/${r.id}.${ext}`
-  await db.query('UPDATE recordings SET object_path = $1 WHERE id = $2', [objectPath, r.id])
-  await audit(db, staff, staff.officeId, 'recording.start', { clientId, documentId: doc.id })
-  return { id: r.id as string, objectPath, documentId: doc.id as string }
+  if (r.mime !== mime) throw new Conflict('同じ録音IDの形式が一致しません')
+  return { id: r.id as string, objectPath: r.object_path as string, mime: r.mime as string, status: r.status as string, uploadUrl: r.upload_url as string | null }
 }
 
-export async function getRecording(db: Q, officeId: string, recordingId: string) {
-  const r = (await db.query('SELECT id, client_id, document_id, object_path, mime, status, duration_ms FROM recordings WHERE id = $1 AND office_id = $2', [recordingId, officeId])).rows[0]
-  if (!r) throw new NotFound()
-  return { id: r.id as string, clientId: r.client_id as string, documentId: r.document_id as string, objectPath: r.object_path as string, mime: r.mime as string, status: r.status as string, durationMs: r.duration_ms as number | null }
+export async function setRecordingUploadUrl(db: Tx, recordingId: string, url: string) {
+  await db.query('UPDATE recordings SET upload_url = $1 WHERE id = $2', [url, recordingId])
 }
 
-/** 送り終わりを受けて、ジョブを作る（同じ録音に 2 つは作らない） */
-export async function completeRecording(db: Q, staff: Staff, recordingId: string, bytes: number, durationMs: number | null) {
-  const rec = await getRecording(db, staff.officeId, recordingId)
-  await db.query("UPDATE recordings SET status = 'uploaded', bytes = $1, duration_ms = $2 WHERE id = $3", [bytes, durationMs, rec.id])
-  const eta = durationMs ? Math.max(60, Math.round(durationMs / 1000 / 6) + 90) : 300
-  const job = (await db.query(
-    `INSERT INTO jobs (office_id, client_id, document_id, recording_id, eta_seconds) VALUES ($1,$2,$3,$4,$5)
-     ON CONFLICT (recording_id) DO UPDATE SET updated_at = now() RETURNING id, status`,
-    [staff.officeId, rec.clientId, rec.documentId, rec.id, eta],
-  )).rows[0]
-  await audit(db, staff, staff.officeId, 'recording.complete', { clientId: rec.clientId, documentId: rec.documentId }, { bytes, durationMs })
-  return { jobId: job.id as string, status: job.status as string }
+/** 録音の行をロックし、完了とジョブの作成を同じトランザクションで確定する。 */
+export async function completeRecording(
+  db: Db, staff: Staff, recordingId: string, durationMs: number | null, expectedBytes: number | undefined,
+  uploadedSize: (path: string) => Promise<number | null>,
+): Promise<string | null> {
+  return tx(db, async (c) => {
+    const rec = (await c.query(
+      'SELECT client_id, document_id, object_path, bytes FROM recordings WHERE id = $1 AND office_id = $2 FOR UPDATE',
+      [recordingId, staff.officeId],
+    )).rows[0]
+    if (!rec) throw new NotFound()
+    const existing = (await c.query('SELECT id FROM jobs WHERE recording_id = $1', [recordingId])).rows[0]
+    const bytes = existing ? Number(rec.bytes) : await uploadedSize(rec.object_path)
+    if (!bytes || (expectedBytes !== undefined && bytes !== expectedBytes)) return null
+    if (existing) return existing.id as string
+
+    await c.query("UPDATE recordings SET status = 'uploaded', bytes = $1, duration_ms = $2, upload_url = NULL WHERE id = $3", [bytes, durationMs, recordingId])
+    const eta = durationMs ? Math.max(60, Math.round(durationMs / 1000 / 6) + 90) : 300
+    const job = (await c.query(
+      'INSERT INTO jobs (office_id, client_id, document_id, recording_id, eta_seconds) VALUES ($1,$2,$3,$4,$5) RETURNING id',
+      [staff.officeId, rec.client_id, rec.document_id, recordingId, eta],
+    )).rows[0]
+    await audit(c, staff, staff.officeId, 'recording.complete', { clientId: rec.client_id, documentId: rec.document_id }, { bytes, durationMs })
+    return job.id as string
+  })
+}
+
+/** worker にジョブが見えるよう、ジョブ作成の確定後に積む。積めなければ次の complete でやり直せる。 */
+export async function dispatchRecordingJob(db: Db, jobId: string, enqueue: () => Promise<void>) {
+  return tx(db, async (c) => {
+    const job = (await c.query('SELECT status, initial_enqueued_at FROM jobs WHERE id = $1 FOR UPDATE', [jobId])).rows[0]
+    if (job.status === 'queued' && !job.initial_enqueued_at) {
+      await enqueue()
+      await c.query('UPDATE jobs SET initial_enqueued_at = now() WHERE id = $1', [jobId])
+    }
+    return { jobId, status: job.status as string }
+  })
 }
 
 export interface JobView {
