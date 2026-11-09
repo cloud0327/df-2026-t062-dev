@@ -8,7 +8,7 @@ import './PetHelper.css'
 const menus = [
   { id: 'documents', icon: 'file-earmark-arrow-down', title: '書類を取り込む' },
   { id: 'review', icon: 'check2-circle', title: '確認する' },
-  { id: 'interview', icon: 'stars', title: '面談のヒント' },
+  { id: 'interview', icon: 'lightbulb', title: '面談のヒント' },
 ] as const
 
 type Menu = typeof menus[number]['id']

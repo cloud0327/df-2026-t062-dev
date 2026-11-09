@@ -35,6 +35,7 @@ export function SurveyImport({ active, available, clientName, onPreview, onIdent
   const [files, setFiles] = useState<Partial<Record<typeof documents[number]['kind'], File>>>({})
   const [state, setState] = useState<ImportState>({ status: 'select' })
   const [sources, setSources] = useState<SurveyPreview[]>([])
+  const surveyPicker = useRef<HTMLInputElement>(null)
   const request = useRef<AbortController | null>(null)
   const latestPreview = useRef(onPreview)
   latestPreview.current = onPreview
@@ -77,18 +78,46 @@ export function SurveyImport({ active, available, clientName, onPreview, onIdent
     <div hidden={!active} className="assistant-import">
       <PetMessage>アセスメントに反映する書類を取り込みましょう。</PetMessage>
       <div className="assistant-stack">
-        {documents.map(({ kind, title, description, icon }) => (
-          <div className="assistant-file-card" key={kind}>
-            <span className="assistant-icon-tile"><PetIcon name={icon} library={kind === 'survey' ? 'icons' : 'lucide'} /></span>
-            <div><strong>{kind === 'nursing' ? <>看護サマリー・<br />退院時情報</> : title}</strong><small>{description}</small>{files[kind] && <small className="assistant-filename">{files[kind]?.name}</small>}</div>
-            <label className="assistant-file-picker">
-              <input type="file" aria-label={`${title}のファイルを選択`} accept=".pdf,application/pdf" disabled={kind !== 'survey' || !available}
-                onChange={(e) => { const file = e.currentTarget.files?.[0]; if (file) { setFiles({ ...files, [kind]: file }); setState({ status: 'select' }) } e.currentTarget.value = '' }} />
-              <span><PetIcon name="folder" />ファイルを選択</span>
-              {kind !== 'survey' && <small>準備中</small>}
-            </label>
-          </div>
-        ))}
+        {documents.map(({ kind, title, description, icon }) => {
+          const selected = files[kind]
+          const action = selected ? '選び直す' : 'ファイルを選択'
+          return (
+            <div className="assistant-file-card" key={kind} data-selected={!!selected}>
+              <span className="assistant-icon-tile"><PetIcon name={icon} library={kind === 'survey' ? 'icons' : 'lucide'} /></span>
+              <div>
+                <strong>{kind === 'nursing' ? <>看護サマリー・<br />退院時情報</> : title}</strong>
+                <small>{description}</small>
+                {kind === 'survey' && <div role="status">
+                  {selected && <>
+                    <small className="assistant-file-status"><PetIcon name="check-circle-fill" />選択済み</small>
+                    <small className="assistant-filename">{selected.name}</small>
+                  </>}
+                </div>}
+              </div>
+              <div className="assistant-file-actions">
+                <label className="assistant-file-picker">
+                  <input ref={kind === 'survey' ? surveyPicker : undefined} type="file" aria-label={`${title}のファイルを${selected ? '選び直す' : '選択'}`}
+                    accept=".pdf,application/pdf" disabled={kind !== 'survey' || !available}
+                    onChange={(e) => {
+                      const file = e.currentTarget.files?.[0]
+                      if (file) {
+                        setFiles((previous) => ({ ...previous, [kind]: file }))
+                        setState({ status: 'select' })
+                      }
+                      e.currentTarget.value = ''
+                    }} />
+                  <span><PetIcon name="folder" />{action}</span>
+                </label>
+                {selected && <button type="button" className="assistant-file-clear" onClick={() => {
+                  setFiles((previous) => ({ ...previous, [kind]: undefined }))
+                  setState({ status: 'select' })
+                  surveyPicker.current?.focus()
+                }}>選択を解除</button>}
+                {kind !== 'survey' && <small>準備中</small>}
+              </div>
+            </div>
+          )
+        })}
       </div>
       <div className="assistant-import-notes">
         <strong><PetIcon name="info-circle" />取り込みのポイント</strong>
