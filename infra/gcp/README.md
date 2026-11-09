@@ -158,7 +158,7 @@ IAM認証のDBユーザー（apiとworkerのサービスアカウント）はTer
 | 順 | 内容 | 失敗したとき |
 |---|---|---|
 | 1 | DB移行。Cloud Runジョブ（`CLOUD_RUN_MIGRATE_JOB`）のイメージを更新し、`node db/migrate.ts` を `--wait` で流す | そこで止まる。api・workerは変わらない。移行は足すだけで、同時実行は advisory lock で防ぐ |
-| 2 | workerを `node worker/index.ts` で更新し、認証つきで `/healthz` を確認する | 直前のリビジョンに戻して止まる。apiは変わらない |
+| 2 | workerを `node worker/index.ts` で更新し、認証つきで `/health` を確認する | 直前のリビジョンに戻して止まる。apiは変わらない |
 | 3 | apiの候補リビジョンをトラフィックなしで作り、認証付きで検証する | 切り替えない |
 | 4 | apiを100%に切り替え、切り替え後も実APIを検証する | 直前のリビジョンへ戻す |
 

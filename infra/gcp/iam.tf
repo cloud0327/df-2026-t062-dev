@@ -70,7 +70,7 @@ resource "google_cloud_run_v2_service_iam_member" "deployer_updates_worker" {
   member   = "serviceAccount:${google_service_account.github_deploy.email}"
 }
 
-# Release verification calls /healthz on the new private worker revision.
+# Release verification calls /health on the new private worker revision.
 resource "google_cloud_run_v2_service_iam_member" "deployer_invokes_worker" {
   location = google_cloud_run_v2_service.worker.location
   name     = google_cloud_run_v2_service.worker.name
