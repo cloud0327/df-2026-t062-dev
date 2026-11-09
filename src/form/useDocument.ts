@@ -16,6 +16,9 @@ export function useDocument(docId: string | undefined) {
   const [doc, setDoc] = useState<DocumentView | null>(null)
   const [pending, setPending] = useState<Map<string, Pending>>(new Map())
   const [sync, setSync] = useState('')
+  /** 直せなかった理由（数秒だけ出す） */
+  const [notice, setNotice] = useState('')
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const [error, setError] = useState('')
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const inflight = useRef<Promise<void> | null>(null)
@@ -102,7 +105,14 @@ export function useDocument(docId: string | undefined) {
   /** 印字欄を直した */
   const edit = useCallback((slot: string, text: string) => {
     if (!form) return
-    queue(editSlot(form, current, slot, text))
+    const r = editSlot(form, current, slot, text)
+    if ('reason' in r) {
+      setNotice(r.reason)
+      if (noticeTimer.current) clearTimeout(noticeTimer.current)
+      noticeTimer.current = setTimeout(() => setNotice(''), 4000)
+      return
+    }
+    queue(r.changes)
   }, [form, current, queue])
 
   /** 欄の値をそのまま変える（差分の欄） */
@@ -127,8 +137,8 @@ export function useDocument(docId: string | undefined) {
 
   /** 差分の欄として出す、AI が書いた長い文章の欄か */
   const diffOf = useCallback((s: SlotView): { key: string, before: string, after: string, ai: string } | null => {
-    if (s.kind !== 'area' || s.entry?.kind !== 'text' || s.entry.path.length) return null
-    const key = s.entry.key
+    if (s.kind !== 'area' || s.binding?.op !== 'text@1' || s.binding.ref.path?.length) return null
+    const key = s.binding.ref.key
     const f = doc?.fields[key]
     const after = typeof current[key] === 'string' ? (current[key] as string) : ''
     const before = typeof saved[key] === 'string' ? (saved[key] as string) : ''
@@ -170,7 +180,7 @@ export function useDocument(docId: string | undefined) {
   }, [pages, diffOf])
 
   return {
-    doc, form, pages, slotPage, current, saved, rendered, renderedSaved, marks, counts, total, updates, updatedFields, sync, error,
+    doc, form, pages, slotPage, current, saved, rendered, renderedSaved, marks, counts, total, updates, updatedFields, sync, notice, error,
     pendingCount: pending.size,
     edit, setValue, flush, reload: load, diffOf,
     savePage: (no: number) => doSave({ scope: 'page', page: no }),

@@ -4,7 +4,7 @@ import { planBatch, sameValue, type BatchPlan, type CurrentField } from '../core
 import { saveOneHunk } from '../core/diff.ts'
 import { isShared } from '../core/fields.ts'
 import { countRequired } from '../core/required.ts'
-import { isSlotKey, type Who } from '../core/slots.ts'
+import { slotKeys, type Who } from '../core/slots.ts'
 import { tx, type Db, type Tx } from './pool.ts'
 
 type Q = Db | Tx
@@ -191,11 +191,9 @@ export async function getDocument(db: Q, officeId: string, documentId: string): 
   }
 }
 
-/** 書類の欄として持てる key か（その様式の key と、その様式の印字欄の値） */
+/** 書類の欄として持てる key か（その様式の印字欄が読む key） */
 function allowedKey(form: FormId, key: string): boolean {
-  const f = FORMS[form]
-  if (isSlotKey(key)) return key.slice(5) in f.slotmap || slotPages(f).has(key.slice(5))
-  return f.usesKeys.includes(key)
+  return FORMS[form].keys.includes(key)
 }
 
 async function writeField(c: Tx, officeId: string, clientId: string, documentId: string, key: string, value: unknown, by: Who, staffId: string | null, extra: { aiValue?: unknown, batchId?: string, cite?: unknown } = {}) {
@@ -284,15 +282,12 @@ export async function saveDocument(db: Db, staff: Staff, documentId: string, req
       let keys: Set<string>
       if (req.scope === 'document') keys = new Set([...Object.keys(fields), ...Object.keys(saved)])
       else {
-        // そのページに印字欄がある key と、そのページの印字欄の値
+        // そのページの印字欄が読む key
         const pages = slotPages(form)
         keys = new Set<string>()
         for (const [slot, p] of pages) {
           if (p !== req.page) continue
-          keys.add(`slot:${slot}`)
-          const e = form.slotmap[slot]
-          if (e && e.kind !== 'derived') keys.add(e.key)
-          else if (e) for (const k of e.keys) keys.add(k)
+          for (const k of slotKeys(form, slot)) keys.add(k)
         }
       }
       for (const k of keys) {
@@ -389,7 +384,7 @@ export async function createAdmission(db: Db, staff: Staff, clientId: string) {
     )).rows[0]
     const src = await readFields(c, assess.id, clientId)
     const proposed: Record<string, { value: unknown }> = {}
-    for (const key of FORMS.admission.usesKeys) {
+    for (const key of FORMS.admission.keys) {
       if (isShared(key) || !src[key]) continue
       proposed[key] = { value: src[key].value }
     }

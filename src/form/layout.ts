@@ -1,5 +1,6 @@
 // 様式のページごとの欄の並び（位置・種類）。キャンバスと同じく、用紙の画像の上に % の位置で重ねる。
-import { FORMS, isCheckSlot, type FormDef, type FormId, type PageDef, type SlotEntry, type TemplateSlot } from '../../forms/index.ts'
+import { FORMS, type FormDef, type FormId, type PageDef } from '../../forms/index.ts'
+import type { Binding } from '../../core/binding.ts'
 
 export const W = 210
 export const H = 297
@@ -22,7 +23,7 @@ export interface SlotView {
   pt: number
   lh: number
   align: 'left' | 'center' | 'right'
-  entry?: SlotEntry
+  binding?: Binding
   /** 表のマス（○ △ を選ぶ）の選択肢。1 つなら押すと付け外し */
   cellOptions?: { text: string, label: string }[]
   label: string
@@ -36,19 +37,18 @@ const LABELS: Record<string, string> = {
   '○': '実施している', '△': '時々実施している', '✓': '要援助と判断した',
 }
 
-function classify(s: TemplateSlot, entry: SlotEntry | undefined): Omit<SlotView, 'name' | 'x' | 'y' | 'w' | 'h' | 'pt' | 'lh' | 'align' | 'label'> {
-  if (s.type === 'circleMark') return { kind: 'circle', entry }
-  if (isCheckSlot(s)) return { kind: 'check', entry }
-  if (entry?.kind === 'choiceText' && entry.options.every((o) => o.text.length <= 1)) {
-    const opts = entry.options.map((o) => ({
+/** 印字欄の見せ方は、対応の ui で決める（丸・✓・表のマス・1 行の文字・文章） */
+function classify(binding: Binding | undefined): Omit<SlotView, 'name' | 'x' | 'y' | 'w' | 'h' | 'pt' | 'lh' | 'align' | 'label'> {
+  if (!binding) return { kind: 'text' }
+  if (binding.ui === 'circle' || binding.ui === 'check') return { kind: binding.ui, binding }
+  if (binding.op === 'symbol@1' && binding.ui === 'cell') {
+    const opts = binding.options.map((o) => ({
       text: o.text,
       label: typeof o.value === 'string' ? o.value.replace(/^[○△✓]（(.*)）$/, '$1') || LABELS[o.text] || o.text : LABELS[o.text] ?? '実施している',
     }))
-    return { kind: 'cell', entry, cellOptions: opts }
+    return { kind: 'cell', binding, cellOptions: opts }
   }
-  const pt = s.fontSize ?? 9
-  const lh = s.lineHeight ?? 1.1
-  return { kind: s.height >= pt * PT * lh * 1.8 ? 'area' : 'text', entry }
+  return { kind: binding.ui === 'area' ? 'area' : 'text', binding }
 }
 
 const cache = new Map<FormId, PageLayout[]>()
@@ -69,7 +69,7 @@ export function pagesOf(formId: FormId): PageLayout[] {
       lh: s.lineHeight ?? 1.1,
       align: s.alignment ?? 'left',
       label: s.name.replace(/^p\d+_/, '').replace(/_/g, ' '),
-      ...classify(s, form.slotmap[s.name]),
+      ...classify(form.bindings[s.name]),
     })),
   }))
   cache.set(formId, out)

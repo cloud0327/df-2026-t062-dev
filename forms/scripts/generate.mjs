@@ -10,6 +10,8 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 import { generate } from '@pdfme/generator';
 import { ROOT, plugins, loadFont, loadTemplate, loadJson } from './lib.mjs';
 import { loadForm } from './forms.mjs';
+import { FORMS } from '../index.ts';
+import { renderAll } from '../../core/binding.ts';
 
 const args = process.argv.slice(2);
 const option = (name) => (args.indexOf(name) >= 0 ? args[args.indexOf(name) + 1] : undefined);
@@ -33,7 +35,7 @@ export function layoutInputs(schemas) {
   return inputs;
 }
 
-const inputs = layoutMode ? layoutInputs(template.schemas) : form.toInputs(loadJson(new URL(dataPath, ROOT)));
+const inputs = layoutMode ? layoutInputs(template.schemas) : renderAll(FORMS[form.id].bindings, loadJson(new URL(dataPath, ROOT)));
 const pdf = await generate({ template, inputs: [inputs], plugins, options: { font: loadFont() } });
 const out = outPath
   ? pathToFileURL(resolve(outPath))

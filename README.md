@@ -35,7 +35,7 @@ Cloud Scheduler（5 分ごと）──▶ worker の見回り
 | `api/` | api（Hono）。ログインの確かめ、置き場（Cloud Storage／ローカル）、ジョブの積み方（Cloud Tasks／同じプロセス）、PDF |
 | `worker/` | 録音 1 本の処理。`vertex/` が本物の AI（STT・Gemini・2 層改）、`fake.ts` が費用のかからない見せかけ |
 | `core/` | 画面・api・worker で共通のもの。`fields.json`（欄の一覧の本体）、型の確かめ、印字欄と欄の値の変換、文ごとの差分、書き換えの決まり |
-| `forms/` | pdfme の様式（アセスメント・入院時情報提供書）。`templates/<様式>/slotmap.json` が「印字欄 → 欄の値」の対応表 |
+| `forms/` | pdfme の様式（アセスメント・入院時情報提供書）。`seed/<様式>/bindings.json` が「印字欄 → 欄の値」の対応（変換は `core/binding.ts` の共通の仕組み） |
 | `db/` | PostgreSQL の移行、読み書き（`repo.ts`）、見本のデータ |
 | `eval/` | 演習シナリオ（公開）と採点（bench）。`run-writer.ts` で 2 層改をシナリオに通す |
 | `docs/` | 設計書（[DB 設計](docs/DB設計.md)、[API 設計](docs/API設計.md)、[AI 基盤の設計](docs/AI基盤の設計.md)、[データの定義](docs/データの定義.md)、[欄の一覧](docs/欄の一覧.md)） |
@@ -81,13 +81,13 @@ GOOGLE_CLOUD_PROJECT=<プロジェクト> AI_PROVIDER=vertex npm run dev:api
 
 ```sh
 npm run typecheck
-npm run forms:check        # 様式と fields.json の食い違い、slotmap.json が最新か
+npm run forms:check        # 様式（template.json）・対応（bindings.json）・fields.json の食い違い
 npm test                   # DATABASE_URL があれば DB を使うテストも走る
 python3 -m unittest discover -s eval/bench
 npm run build
 ```
 
-`slotmap.json` は、様式（`template.json`・ページのファイル）を直したら `npm run forms:slotmap` で作り直します。
+印字欄を足した・名前を変えたときは、`forms/seed/<様式>/bindings.json` に対応を書きます（書き方は [docs/データの定義.md](docs/データの定義.md) の「印字欄の対応」）。
 
 ## 環境変数
 

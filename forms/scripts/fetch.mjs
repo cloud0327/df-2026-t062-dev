@@ -52,7 +52,8 @@ function render({ pdf, out, first }) {
   rmSync(tmp, { recursive: true, force: true })
   mkdirSync(tmp)
   // 180 dpi のグレー（拡大 160% でも罫線が読める大きさ）
-  execFileSync('pdftoppm', ['-r', '180', '-gray', '-png', '-f', String(first), src, `${tmp}/p`], { stdio: 'inherit' })
+  // -cropbox: 最後の 2 ページは A3 の見開きの半分ずつを見せるページなので、見せる枠（CropBox）だけを画像にする
+  execFileSync('pdftoppm', ['-r', '180', '-gray', '-png', '-cropbox', '-f', String(first), src, `${tmp}/p`], { stdio: 'inherit' })
   const files = readdirSync(tmp).filter((f) => f.endsWith('.png')).sort()
   files.forEach((f, i) => renameSync(`${tmp}/${f}`, `${dir}/p${i + 1}.png`))
   rmSync(tmp, { recursive: true, force: true })

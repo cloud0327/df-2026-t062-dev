@@ -84,8 +84,10 @@ pdfplumber の「文字の枠」は、書類のフォントの情報によって
 |---|---|
 | `templates/<様式>/base.pdf` | 元の様式（リポジトリには入れていない。上の注意） |
 | `templates/<様式>/template.json` | 欄の位置。**Designer で直したらこれが正**。`basePdf` はファイル名だけを持つ |
-| `templates/admission/mapping.mjs` | 入院時情報提供書の変換 |
-| `templates/assessment/pages/*.mjs`、`index.mjs`、`lib-p567.mjs` | アセスメント用紙の欄の配置と変換 |
+| `seed/<様式>/bindings.json` | **印字欄 → 欄の値の対応**（1 行 1 欄）。表示と直しは `core/binding.ts` の共通の仕組み。書き方は [`../docs/データの定義.md`](../docs/データの定義.md) の「印字欄の対応」 |
+| `templates/admission/mapping.mjs` | 入院時情報提供書の欄の配置。`toInputs` は前の手書きの変換で、サービスは使わない（`tools/capture-render.mjs` が前の表示を残すのに使った） |
+| `templates/assessment/pages/*.mjs`、`index.mjs`、`lib-p567.mjs` | アセスメント用紙の欄の配置。`inputs` は前の手書きの変換（同上） |
+| `tools/build-bindings.mjs`、`tools/capture-render.mjs` | 前の変換から対応へ移したときの道具（2026-11-09）。今は `bindings.json` が本体 |
 | `scripts/build-*-template.mjs` | `template.json` を作る。**Designer で直したあとに実行すると上書きされる** |
 | `scripts/generate.mjs`、`check.mjs`、`preview-page.mjs`、`dump-page.mjs` | PDF を作る、食い違いを探す、1 ページだけ試す、座標を一覧で見る |
 | `scripts/layout.mjs` | 文字を目印に位置を探す道具と、欄を作る関数 |
@@ -97,14 +99,13 @@ pdfplumber の「文字の枠」は、書類のフォントの情報によって
 | `designer/`、`vite.config.js` | Designer の画面（`index.html`）と、様式に直接入力する試作の画面（`form.html`）。見本データの変換はサーバー側で行う（変換がファイルを読むため） |
 | `fonts/` | BIZ UDP ゴシック（SIL Open Font License。`OFL.txt`） |
 
-## 確かめていること（`pnpm check`）
+## 確かめていること（`npm run forms:check`）
 
 様式ごとに:
 
-1. テンプレートの欄と、変換プログラムが値を出す欄が 1 対 1 で一致する
-2. 変換プログラムが読む key が、すべて `fields.json` にある
-3. `fields.json` で「この様式に入る」と書いた欄を、変換プログラムが読んでいる（図は人が描くので除く。読んでいなければ注意を出す）
-4. 見本データを変換したとき、全部の欄の値が文字列になる
+1. テンプレートの印字欄と、対応（`bindings.json`）が 1 対 1 で一致する。対応の key・項目が `fields.json` にあり、丸・✓ を付け外ししたときの動きが決まっている
+2. 対応が読む key と、`fields.json` で「この様式に入る」と書いた欄（`forms`）が一致する（図は人が描くので除く）
+3. 見本データを変換したとき、全部の欄の値が文字列になる
 
 あわせて、見本データの key がすべて `fields.json` にあることも確かめる。
 
@@ -121,7 +122,7 @@ pdfplumber の「文字の枠」は、書類のフォントの情報によって
 
 ## わかっている問題
 
-- 選択肢の意味が用紙に書いていない項目（1-14、2-13、3-10、4-16〜4-21、5-7〜5-9）は、選択肢の何番目かで番号に丸を付けている。意味は全社協の記入の手引きか現場に確かめる。
+- 番号の意味が分からない項目（1-14、2-13、3-10、5-7〜5-9）は、AI は書かない。ケアマネが用紙で丸を付ける（`core/reference/認定調査の選択肢.json`）。
 - 様式の「その他（　）」の中に書く内容のうち、`fields.json` に key がないものは空のまま（食事場所、所有形態、寝具、福祉機器、トイレ、主治医意見書の (3)(5) のその他など）。
 - 成年後見制度の「□（　）」の欄は作っていない。
 - アセスメントの判定者の「（機関名　）」の欄は狭く、事業所名は小さい文字になる。

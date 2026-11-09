@@ -57,7 +57,6 @@ export function valueSchema(key: string, o: SchemaOptions = {}): z.ZodType | und
 /** 値が型どおりか。null は「消す」なので通す。AI が書いた値は strictDates で確かめる */
 export function validValue(key: string, value: unknown, o: SchemaOptions = {}): boolean {
   if (value === null) return true
-  if (key.startsWith('slot:')) return typeof value === 'string'
   const s = valueSchema(key, o)
   return !!s && s.safeParse(value).success
 }

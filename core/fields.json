@@ -197,19 +197,19 @@
     {"key": "insurance.highCostStage", "label": "高額介護サービス費 利用者負担段階", "type": "enum", "choices": ["第1段階", "第2段階", "第3段階", "第4段階", "第5段階"], "item23": 3, "source": ["talk"], "forms": {"assess": "p.1 高額介護サービス費該当"}},
     {"key": "insurance.healthInsuranceType", "label": "健康保険の種類", "type": "enum", "choices": ["国保", "協会けんぽ", "組合健保", "日雇い", "国公共済", "地方共済", "私立学校共済", "船員", "後期高齢者医療"], "item23": 3, "source": ["doc:医療保険証"], "forms": {"assess": "p.3 制度利用状況 健康保険"}},
     {"key": "insurance.workersComp", "label": "労災保険", "type": "object", "of": "HasDetail", "item23": 3, "source": ["talk"], "forms": {"assess": "p.3 制度利用状況 労災保険→（　）"}},
-    {"key": "handbook.physical", "label": "身体障害者手帳", "type": "object", "item23": 3, "source": ["doc:手帳"], "forms": {"assess": "p.1 身体障害者手帳（有無・等級・種級・交付日）"}, "fields": [
+    {"key": "handbook.physical", "label": "身体障害者手帳", "type": "object", "item23": 3, "source": ["doc:手帳"], "forms": {"assess": "p.1 身体障害者手帳（有無・等級・種級・交付日）", "adm": "1. 障害など認定（身体。「障害など認定」の欄がないとき、手帳の有無から）"}, "fields": [
       {"key": "has", "label": "有無", "type": "bool"},
       {"key": "grade", "label": "級（1〜6 級の数字だけ）", "type": "text"},
       {"key": "kind", "label": "種（1 種・2 種の数字だけ）", "type": "text"},
       {"key": "issuedDate", "label": "交付日", "type": "date"},
       {"key": "detail", "label": "障害の内容", "type": "text"}
     ]},
-    {"key": "handbook.rehabilitation", "label": "療育手帳", "type": "object", "item23": 3, "source": ["doc:手帳"], "forms": {"assess": "p.1 療育手帳（有無・程度・交付日）"}, "fields": [
+    {"key": "handbook.rehabilitation", "label": "療育手帳", "type": "object", "item23": 3, "source": ["doc:手帳"], "forms": {"assess": "p.1 療育手帳（有無・程度・交付日）", "adm": "1. 障害など認定（知的。「障害など認定」の欄がないとき、手帳の有無から）"}, "fields": [
       {"key": "has", "label": "有無", "type": "bool"},
       {"key": "degree", "label": "程度", "type": "text"},
       {"key": "issuedDate", "label": "交付日", "type": "date"}
     ]},
-    {"key": "handbook.mental", "label": "精神障害者保健福祉手帳", "type": "object", "item23": 3, "source": ["doc:手帳"], "forms": {"assess": "p.1 精神障害者保健福祉手帳（有無・等級・交付日）"}, "fields": [
+    {"key": "handbook.mental", "label": "精神障害者保健福祉手帳", "type": "object", "item23": 3, "source": ["doc:手帳"], "forms": {"assess": "p.1 精神障害者保健福祉手帳（有無・等級・交付日）", "adm": "1. 障害など認定（精神。「障害など認定」の欄がないとき、手帳の有無から）"}, "fields": [
       {"key": "has", "label": "有無", "type": "bool"},
       {"key": "grade", "label": "等級", "type": "text"},
       {"key": "issuedDate", "label": "交付日", "type": "date"}
@@ -235,7 +235,7 @@
 
     {"group": "認定情報"},
     {"key": "cert.status", "label": "認定の状況", "type": "enum", "choices": ["認定済", "新規申請中", "区分変更申請中", "更新申請中", "未申請"], "item23": 8, "source": ["doc:被保険者証", "talk"], "forms": {"assess": "p.1 要介護認定 済・未（見込み）", "cp1": "認定済・申請中", "adm": "1. 入院時の要介護度 申請中・区分変更・未申請"}, "note": "様式ごとに選択肢の粒度が違う。細かい方で持ち、出すときにまとめる"},
-    {"key": "cert.careLevel", "label": "要介護度", "type": "enum", "choices": "要介護度", "item23": 8, "source": ["doc:被保険者証"], "forms": {"assess": "p.1 要介護認定 済 → 非該当・要支援1・2・要介護1〜5", "cp1": "要介護状態区分", "adm": "1. 入院時の要介護度 要支援（　）要介護（　）"}, "requires": {"cert.status": ["認定済"]}},
+    {"key": "cert.careLevel", "label": "要介護度", "type": "enum", "choices": "要介護度", "item23": 8, "source": ["doc:被保険者証"], "forms": {"assess": "p.1 要介護認定 済 → 非該当・要支援1・2・要介護1〜5", "cp1": "要介護状態区分", "adm": "1. 入院時の要介護度 要支援（　）要介護（　）"}, "requires": {"cert.status": ["認定済", "区分変更申請中", "更新申請中"]}},
     {"key": "cert.expectedCareLevel", "label": "要介護度の見込み（申請中のとき）", "type": "enum", "choices": "要介護度", "item23": 8, "source": ["judge"], "forms": {"assess": "p.1 要介護認定 未（見込み）→"}, "requires": {"cert.status": ["新規申請中", "区分変更申請中", "更新申請中", "未申請"]}},
     {"key": "cert.certifiedDate", "label": "認定日", "type": "date", "item23": 8, "source": ["doc:被保険者証"], "forms": {"assess": "p.1 認定日", "cp1": "認定日"}},
     {"key": "cert.validFrom", "label": "認定の有効期間（開始）", "type": "date", "item23": 8, "source": ["doc:被保険者証"], "forms": {"cp1": "認定の有効期間", "adm": "1. 有効期間"}},
