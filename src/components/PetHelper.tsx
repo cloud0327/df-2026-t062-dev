@@ -1,53 +1,161 @@
-// 作業のお手伝い（キャンバスの部品 PetHelper）。右下の猫を押すと、用紙の上に浮かんで出る。
-// メニューを押したあとの動きとメモの送り先は、まだ決めていない（2026-11-09。モックのまま）。
-import { useState } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
+import './PetHelper.css'
 
-interface Props {
-  context: string
-  message: string
-  items: string[]
-  startOpen?: boolean
+const menus = {
+  revise: {
+    icon: 'pencil',
+    title: '書き方を相談する',
+    description: '用紙の書き方や、入力した文章の表現をペットに相談できます。',
+  },
+  documents: {
+    icon: 'file-earmark-plus',
+    title: '書類を追加する',
+    description: '関連する書類をアップロードしたり、必要な書類の作成を依頼できます。',
+  },
+  interview: {
+    icon: 'calendar-plus',
+    title: '次の面談の準備をする',
+    description: '次の面談に向けて、確認すべき質問項目やチェックポイントを整理してもらえます。',
+  },
+} as const
+
+type Menu = keyof typeof menus
+const menuKeys = ['revise', 'documents', 'interview'] satisfies Menu[]
+
+const sampleFiles = [
+  { name: '診療情報提供書.pdf', size: '1.2 MB', icon: 'file-earmark-pdf-fill' },
+  { name: '検査結果.pdf', size: '2.8 MB', icon: 'file-earmark-pdf-fill' },
+  { name: '服薬情報.jpg', size: '0.9 MB', icon: 'image' },
+]
+
+const sampleTopics = [
+  '住環境の詳細（段差・手すりの有無など）',
+  '健康状態の変化（直近の体調・受診予定など）',
+  'ご家族の支援体制（同居・訪問の頻度など）',
+]
+
+function Icon({ name }: { name: string }) {
+  return <span className="assistant-icon" aria-hidden="true" style={{ maskImage: `url(/assistant/icons/${name}.svg)` }} />
 }
 
-export function PetHelper({ context, message, items, startOpen = true }: Props) {
-  const [open, setOpen] = useState(startOpen)
-  const list = items.map((label, i) => ({ no: (i < 9 ? '0' : '') + (i + 1), label }))
+function Pet() {
+  return <img className="assistant-pet" src="/assistant/pet-cat.jpg" alt="" />
+}
+
+function AssistantMessage({ children }: { children: ReactNode }) {
+  return <div className="assistant-message"><Pet /><p>{children}</p></div>
+}
+
+function DocumentsMock() {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 14, fontFamily: "'Noto Sans JP',system-ui,sans-serif", color: '#1F2430', fontSize: 13, lineHeight: 1.6 }}>
-      {open && (
-        <div role="dialog" aria-label="作業のお手伝い" style={{ width: 360, background: '#FFFFFF', border: '1px solid #E1E4EA', borderRadius: 16, boxShadow: '0 12px 36px rgba(20,24,32,0.18)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px' }}>
-            <span aria-hidden="true" style={{ width: 30, height: 30, borderRadius: 8, background: '#EEF3FD', color: '#2453C4', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v4" /><path d="M12 17v4" /><path d="M3 12h4" /><path d="M17 12h4" /><path d="M12 8l1.5 2.5L16 12l-2.5 1.5L12 16l-1.5-2.5L8 12l2.5-1.5z" /></svg>
-            </span>
-            <strong style={{ fontSize: 15 }}>作業のお手伝い</strong>
-            <span style={{ marginLeft: 'auto', fontSize: 11, color: '#5A6270' }}>{context}</span>
-          </div>
-          <div style={{ background: '#F4F6FA', padding: '14px 16px', fontSize: 13, whiteSpace: 'pre-line' }}>{message}</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '14px 16px 10px' }}>
-            {list.map((it) => (
-              <button key={it.no} type="button" style={{ font: 'inherit', display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', border: '1px solid #E1E4EA', borderRadius: 12, background: '#FFFFFF', padding: '12px 14px', cursor: 'pointer', color: '#1F2430', minHeight: 52 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: '#2453C4', background: '#EEF3FD', borderRadius: 6, padding: '2px 7px' }}>{it.no}</span>
-                <span style={{ fontSize: 14, fontWeight: 700, flex: '1 1 auto' }}>{it.label}</span>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8A919C" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
-              </button>
-            ))}
-          </div>
-          <div style={{ padding: '4px 16px 0' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px solid #CBD1DA', borderRadius: 12, padding: '6px 6px 6px 12px' }}>
-              <label htmlFor="petMemo" className="sr">メモや直してほしいこと</label>
-              <input id="petMemo" type="text" placeholder="メモや修正内容を入力…" style={{ flex: '1 1 auto', minWidth: 0, border: 0, outline: 'none', font: 'inherit', fontSize: 13, color: '#1F2430', background: 'transparent', minHeight: 32 }} />
-              <button type="button" aria-label="送る" style={{ flex: '0 0 auto', width: 34, height: 34, borderRadius: 8, border: 0, background: '#2453C4', color: '#FFFFFF', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4l13 8-13 8z" /></svg>
-              </button>
-            </div>
-          </div>
-          <div style={{ padding: '8px 16px 14px', fontSize: 11, color: '#5A6270' }}>＊ペットは決まったメニューを案内します</div>
-        </div>
+    <>
+      <div className="assistant-upload">
+        <button className="assistant-primary" type="button" disabled><Icon name="folder" />ファイルを選択</button>
+        <p>対応形式：PDF / JPG / PNG（1ファイル100MBまで）</p>
+      </div>
+      <h4>追加する書類の一覧（{sampleFiles.length}件）</h4>
+      <ul className="assistant-files">
+        {sampleFiles.map(({ name, size, icon }) => (
+          <li key={name}>
+            <span className={`assistant-icon-tile${icon === 'image' ? '' : ' assistant-pdf'}`}><Icon name={icon} /></span>
+            <span><strong>{name}</strong><small>{size}</small></span>
+            <button className="assistant-icon-button" type="button" aria-label={`${name}を取り除く`} disabled><Icon name="x-lg" /></button>
+          </li>
+        ))}
+      </ul>
+      <button className="assistant-primary assistant-read" type="button" disabled><Icon name="stars" />追加してAIで読み取る</button>
+    </>
+  )
+}
+
+function InterviewMock() {
+  return (
+    <>
+      <AssistantMessage>現在のフェースシートの内容をもとに、次の面談で確認しておきたい話題を整理しました。</AssistantMessage>
+      <ul className="assistant-topics">
+        {sampleTopics.map((topic, i) => (
+          <li key={topic}>
+            <span role="checkbox" aria-checked={i < 2} aria-disabled="true"><Icon name={i < 2 ? 'check-square-fill' : 'square'} />{topic}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="assistant-note"><Icon name="info-circle" />チェックのON/OFFで、作成する質問リストの内容が変わります。</p>
+      <AssistantMessage>この内容で質問リストを作成しますか？</AssistantMessage>
+      <div className="assistant-message assistant-user-message"><p>はい、お願いします！</p><span className="assistant-user"><Icon name="person" /></span></div>
+      <AssistantMessage>承知しました！<br />次の面談で使える質問リストを作成しました。</AssistantMessage>
+      <div className="assistant-attachment">
+        <Icon name="file-earmark-text" />
+        <strong>次回面談の質問リスト.pdf</strong>
+        <button className="assistant-outline" type="button" disabled><Icon name="eye" />プレビュー</button>
+        <button className="assistant-icon-button" type="button" aria-label="質問リストをダウンロード" disabled><Icon name="download" /></button>
+      </div>
+      <div className="assistant-actions">
+        <button className="assistant-outline" type="button" disabled><Icon name="pencil" />質問リストを編集</button>
+        <button className="assistant-outline" type="button" disabled><Icon name="plus-circle" />面談メモの<br />テンプレートを作る</button>
+      </div>
+    </>
+  )
+}
+
+export function PetHelper() {
+  const [menu, setMenu] = useState<Menu | null>(null)
+  const selected = menu ? menus[menu] : null
+  const lastMenu = useRef<Menu | null>(null)
+  const goBack = () => {
+    lastMenu.current = menu
+    setMenu(null)
+  }
+
+  return (
+    <aside className="assistant-panel" aria-labelledby="assistant-title">
+      {selected && (
+        <header className="assistant-header">
+          {menu === 'interview' && <button className="assistant-icon-button" type="button" aria-label="メニューに戻る" autoFocus onClick={goBack}><Icon name="chevron-left" /></button>}
+          {menu === 'interview' ? <Icon name={selected.icon} /> : <Pet />}
+          <h2 id="assistant-title">{menu === 'interview' ? selected.title : 'ペットに相談'}</h2>
+        </header>
       )}
-      <button type="button" aria-label={open ? '作業のお手伝いを閉じる' : '作業のお手伝いを開く'} aria-expanded={open} onClick={() => setOpen(!open)} style={{ width: 84, height: 84, borderRadius: 22, background: '#FFFFFF', border: '1px solid #E1E4EA', boxShadow: '0 8px 24px rgba(20,24,32,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0 }}>
-        <svg width="60" height="60" viewBox="0 0 64 64" aria-hidden="true"><path d="M12 27 L14 8 L26 18 Q32 16 38 18 L50 8 L52 27 Q56 35 52 44 Q46 56 32 56 Q18 56 12 44 Q8 35 12 27 Z" fill="#FFFFFF" stroke="#2F5FD0" strokeWidth="2.6" strokeLinejoin="round" /><path d="M16.5 14 L18 22 L23 18 Z" fill="#DCE7FB" /><path d="M47.5 14 L46 22 L41 18 Z" fill="#DCE7FB" /><ellipse cx="24" cy="34" rx="2.6" ry="3.4" fill="#1F2430" /><ellipse cx="40" cy="34" rx="2.6" ry="3.4" fill="#1F2430" /><path d="M30 40 L34 40 L32 42.5 Z" fill="#E97C93" /><path d="M27 45 Q29.5 47.5 32 45 Q34.5 47.5 37 45" fill="none" stroke="#1F2430" strokeWidth="1.8" strokeLinecap="round" /><ellipse cx="18.5" cy="42" rx="3.5" ry="2" fill="#F9CDD6" /><ellipse cx="45.5" cy="42" rx="3.5" ry="2" fill="#F9CDD6" /></svg>
-      </button>
-    </div>
+      <div className={selected ? "assistant-body" : "assistant-body assistant-home"} key={menu}>
+        {selected ? (
+          <>
+            {menu !== 'interview' && (
+              <div className="assistant-detail">
+                <button className="assistant-icon-button" type="button" aria-label="メニューに戻る" autoFocus onClick={goBack}><Icon name="chevron-left" /></button>
+                <span className="assistant-icon-tile"><Icon name={selected.icon} /></span>
+                <h3>{selected.title}</h3>
+                <p>{selected.description}</p>
+              </div>
+            )}
+            {menu === 'documents' && <DocumentsMock />}
+            {menu === 'interview' && <InterviewMock />}
+            {menu === 'revise' && <textarea className="assistant-revision" aria-label="相談内容" placeholder="相談したい内容を入力…" disabled />}
+          </>
+        ) : (
+          <>
+            <div className="assistant-intro">
+              <Pet />
+              <h2 id="assistant-title">こんにちは！今日は何から一緒に進めましょうか？</h2>
+            </div>
+            <div className="assistant-menu">
+              {menuKeys.map((key) => {
+                const item = menus[key]
+                return (
+                  <button key={key} type="button" className="assistant-card" ref={(button) => {
+                    if (button && lastMenu.current === key) {
+                      button.focus()
+                      lastMenu.current = null
+                    }
+                  }} onClick={() => setMenu(key)}>
+                    <span className="assistant-icon-tile"><Icon name={item.icon} /></span>
+                    <strong>{item.title}</strong>
+                    <Icon name="chevron-right" />
+                  </button>
+                )
+              })}
+            </div>
+          </>
+        )}
+      </div>
+    </aside>
   )
 }

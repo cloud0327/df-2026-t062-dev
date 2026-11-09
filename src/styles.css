@@ -1,4 +1,4 @@
-/* キャンバス（ケアマネ AI 最終デザイン・お手伝いを浮かべる案）の値をそのまま写したもの。
+/* ケアマネ AI の共通スタイル。
    PC は .pc、iPad は .pad の中だけに効く。色や大きさを変えるときは、キャンバスと合わせる。 */
 *, *::before, *::after { box-sizing: border-box; }
 html, body, #root { margin: 0; height: 100%; }
@@ -94,3 +94,50 @@ a:hover { color: #1A3E99; }
 .spin { width: 20px; height: 20px; border-radius: 50%; border: 3px solid rgba(255, 255, 255, 0.35); border-top-color: #FFFFFF; animation: spin 0.9s linear infinite; flex: 0 0 auto; }
 .spin-b { border-color: #CFD8EE; border-top-color: #2453C4; }
 .glow { animation: glow 1.6s ease-out 2; }
+
+/* PC の作業画面。目次、用紙、アシスタントはそれぞれの欄でスクロールする。 */
+.pc-work { height: 100dvh; min-height: 560px; }
+.pc-work > header { min-height: 60px; }
+.pc-work-client { min-height: 63px; }
+.pc-work .nav-i { min-height: 34px; font-size: 14px; }
+.pc-work .nav-i .no { width: 24px; }
+.pc-work-layout {
+  display: grid;
+  grid-template-columns: clamp(160px, 14.7vw, 233px) minmax(0, 1fr) clamp(310px, 26.5vw, 420px);
+  gap: 17px;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 16px 28px 26px;
+}
+.pc-work-tabs {
+  position: relative;
+  z-index: 8;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+.pc-work .pc-work-tabs .dtab { border-radius: 8px; border-bottom: 1px solid transparent; margin: 0; }
+.pc-work .pc-work-tabs .dtab-on { border-color: #dce3f2; background: #f1f5ff; }
+.pc-work .pc-work-save {
+  min-width: 108px;
+  min-height: 39px;
+  border-color: #0647df;
+  border-radius: 9px;
+  background: #0647df;
+  font-weight: 700;
+}
+.pc-work .pc-work-save:hover { background: #0439b8; }
+@media (max-width: 1000px) {
+  .pc-work { height: auto; min-height: 100dvh; }
+  .pc-work-layout {
+    grid-template-columns: 160px minmax(0, 1fr);
+    grid-template-rows: max(520px, 72dvh) auto;
+    padding-inline: 16px;
+  }
+  .pc-work-layout .assistant-panel { grid-column: 2; }
+}
+@media (max-width: 620px) {
+  .pc-work-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto max(520px, 72dvh) auto; }
+  .pc-work-layout nav { max-height: 150px; }
+  .pc-work-layout .assistant-panel { grid-column: 1; }
+}
