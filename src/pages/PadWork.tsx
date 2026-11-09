@@ -136,9 +136,14 @@ export function PadWork({ clientId }: { clientId: string }) {
       )}
       {recorder.phase === 'error' && (
         <div role="alert" className="strip" style={{ background: '#FDE8E7', color: '#A3261C' }}>
-          <div style={{ flex: '1 1 auto' }}>{recorder.error}。録音は iPad に残っています。電波のあるところで、もう一度開いてください。</div>
+          <div style={{ flex: '1 1 auto' }}>{recorder.error}</div>
+          <button type="button" onClick={recorder.retry} disabled={recorder.busy} className="tb">再試行</button>
           <button type="button" onClick={recorder.reset} style={{ font: 'inherit', fontSize: 15, fontWeight: 700, border: 0, background: 'transparent', color: '#A3261C', minHeight: 44 }}>閉じる</button>
         </div>
+      )}
+
+      {recorder.phase === 'rec' && recorder.storageWarning && (
+        <div role="alert" className="strip" style={{ background: '#FFF4E5' }}>録音を端末に保存できていません。録音を止めるまで、この画面を開いたままにしてください。</div>
       )}
 
       <div ref={scroller} onScroll={onScroll} style={{ flex: '1 1 auto', minHeight: 0, overflow: 'auto', padding: '16px 16px 150px', position: 'relative' }}>
@@ -193,7 +198,7 @@ export function PadWork({ clientId }: { clientId: string }) {
             <button type="button" onClick={() => void recorder.stop()} className="pill" style={{ pointerEvents: 'auto', border: 0, background: '#D93A2B', color: '#FFFFFF', cursor: 'pointer', boxShadow: '0 8px 24px rgba(217,58,43,0.35)' }}><span aria-hidden="true" style={{ width: 18, height: 18, borderRadius: 3, background: '#FFFFFF' }} />止める<span style={{ fontWeight: 500, fontSize: 18, opacity: 0.9 }}>{recorder.elapsed}</span></button>
           </>
         ) : phase === 'idle' || phase === 'done' ? (
-          <button type="button" onClick={() => { void recorder.start(); setTab('assessment') }} disabled={!docId} className="pill" style={{ pointerEvents: 'auto', border: '1px solid #CBD1DA', background: '#FFFFFF', color: '#1F2430', cursor: 'pointer', boxShadow: '0 8px 24px rgba(20,24,32,0.20)' }}><span aria-hidden="true" style={{ width: 22, height: 22, borderRadius: '50%', background: '#E5483A' }} />録音する</button>
+          <button type="button" onClick={() => { void recorder.start(); setTab('assessment') }} disabled={!docId || recorder.busy} className="pill" style={{ pointerEvents: 'auto', border: '1px solid #CBD1DA', background: '#FFFFFF', color: '#1F2430', cursor: 'pointer', boxShadow: '0 8px 24px rgba(20,24,32,0.20)' }}><span aria-hidden="true" style={{ width: 22, height: 22, borderRadius: '50%', background: '#E5483A' }} />録音する</button>
         ) : null}
       </div>
     </div>
