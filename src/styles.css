@@ -163,4 +163,4 @@ a:hover { color: #1A3E99; }
 }
 
 /* 未対応の書類の札 */
-.coming-soon { display: inline-block; margin-top: 2px; padding: 1px 8px; border-radius: 999px; background: #EEF0F3; color: #5A6270; font-weight: 600; }
+.coming-soon { align-self: flex-start; display: inline-block; margin-top: 2px; padding: 1px 8px; border-radius: 999px; background: #EEF0F3; color: #5A6270; font-weight: 600; }
