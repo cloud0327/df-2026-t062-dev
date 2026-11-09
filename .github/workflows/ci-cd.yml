@@ -87,11 +87,14 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.HOSTING_ENABLED == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
     concurrency:
       group: firebase-hosting-live
       queue: max
     environment:
-      name: hosting-live
+      name: hosting-live-wif
       url: ${{ vars.FIREBASE_HOSTING_URL }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -104,6 +107,8 @@ jobs:
         with:
           name: hosting-${{ github.sha }}
           path: dist/
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools@15.22.3
       - name: Check latest main and build SHA
         id: release
         env:
@@ -116,23 +121,26 @@ jobs:
             echo "Skipped an older main commit"
             exit 0
           fi
-          : "${FIREBASE_PROJECT_ID:?Set FIREBASE_PROJECT_ID in hosting-live}"
-          [[ "$FIREBASE_HOSTING_URL" =~ ^https://[a-z0-9-]+\.web\.app$ ]]
+          : "${FIREBASE_PROJECT_ID:?Set FIREBASE_PROJECT_ID in hosting-live-wif}"
+          [[ "$FIREBASE_HOSTING_URL" == "https://$FIREBASE_PROJECT_ID.web.app" ]]
           node --input-type=module -e '
             import { readFileSync } from "node:fs";
             import assert from "node:assert/strict";
             assert.equal(JSON.parse(readFileSync("dist/version.json", "utf8")).sha, process.env.GITHUB_SHA);
           '
           echo 'current=true' >> "$GITHUB_OUTPUT"
+      - name: Authenticate to Google Cloud
+        if: steps.release.outputs.current == 'true'
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          project_id: ${{ vars.FIREBASE_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.FIREBASE_WIF_PROVIDER }}
+          service_account: ${{ vars.FIREBASE_DEPLOY_SERVICE_ACCOUNT }}
       - name: Publish Firebase Hosting
         if: steps.release.outputs.current == 'true'
-        uses: FirebaseExtended/action-hosting-deploy@500ac625ca2dd40cbd15f7659af953801858032a # v0.11.0
-        with:
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          projectId: ${{ vars.FIREBASE_PROJECT_ID }}
-          channelId: live
-          firebaseToolsVersion: '15.22.3'
-          disableComment: true
+        env:
+          FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
+        run: firebase deploy --only hosting --project "$FIREBASE_PROJECT_ID" --non-interactive
       - name: Verify public HTTPS endpoints
         if: steps.release.outputs.current == 'true'
         env:

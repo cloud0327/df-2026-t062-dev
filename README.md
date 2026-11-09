@@ -2,7 +2,7 @@
 
 介護支援専門員（ケアマネ）向けの AI 業務エージェントです。面談を録音すると、AI がアセスメント用紙に書き込みます。ケアマネは用紙の上で違うところだけを直し、保存します。一度集めた情報は、入院時情報提供書など別の書類にも使い回します。
 
-[デモサイトを開く](https://df-2026-t062-demo-327.web.app)
+[デモサイトを開く](https://gen-lang-client-0990270423.web.app)
 
 ## できること
 
@@ -107,7 +107,14 @@ npm run build
 
 ## CI/CD
 
-PR と `main` で、型チェック、様式の確かめ、テスト（PostgreSQL を使うものも）、ビルド、公開版の確かめ、Docker イメージの確かめを行います。公開ジョブは検証済みの `dist/` を Firebase Hosting に出します。api と worker は同じイメージで、Cloud Run への公開は手動の workflow（`cloud-run.yml`、承認つき）です。Google Cloud の構成と初回の準備（Terraform の適用、Cloud SQL の `app` ロール、移行）は [infra/gcp/README.md](infra/gcp/README.md) を見てください。
+PR と `main` で、型チェック、様式の確かめ、テスト（PostgreSQL を使うものも）、ビルド、公開版の確かめ、Docker イメージの確かめを行います。`Verify` が成功し、`HOSTING_ENABLED=true` の場合は、検証済みの `dist/` を `hosting-live-wif` Environmentの設定を使って Firebase Hosting に自動公開します。api と worker の Cloud Run 公開は手動の workflow（`cloud-run.yml`、承認つき）です。Google Cloud の構成と初回の準備（Terraform の適用、Cloud SQL の `app` ロール、移行）は [infra/gcp/README.md](infra/gcp/README.md) を見てください。
+
+### Firebase Hosting の初回接続
+
+1. Firebase プロジェクト `gen-lang-client-0990270423` のデフォルト Hosting サイトを使います。
+2. Hosting 専用サービスアカウントに `roles/firebasehosting.admin` と `roles/serviceusage.apiKeysViewer` を付与します。WIF の信頼条件は、開発用リポジトリと所有者の数値 ID、`main`、`ci-cd.yml`、`hosting-live-wif` に限定します。
+3. GitHub の `hosting-live-wif` Environment で `main` からのデプロイを許可し、`FIREBASE_PROJECT_ID`、`FIREBASE_HOSTING_URL`、`FIREBASE_WIF_PROVIDER`、`FIREBASE_DEPLOY_SERVICE_ACCOUNT` を登録します。Firebase CLI は短期認証を Application Default Credentials 経由で利用します。
+4. `Verify` が成功したら、リポジトリ変数 `HOSTING_ENABLED=true` を設定します。`main` への push で自動公開されます。
 
 ### 切り戻し
 
