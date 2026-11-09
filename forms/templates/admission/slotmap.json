@@ -639,10 +639,32 @@
   "path": [],
   "kind": "text"
  },
+ "3_家族の意向_第1表参照": {
+  "key": "admission.intentionFamilySeePlan",
+  "path": [],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": true
+   }
+  ]
+ },
  "3_本人の意向": {
   "key": "intention.person",
   "path": [],
   "kind": "text"
+ },
+ "3_本人の意向_第1表参照": {
+  "key": "admission.intentionPersonSeePlan",
+  "path": [],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": true
+   }
+  ]
  },
  "3_生活歴": {
   "key": "person.lifeHistory",
@@ -688,6 +710,13 @@
     "value": false
    }
   ]
+ },
+ "5_世帯への配慮_内容": {
+  "key": "outlook.householdConsideration",
+  "path": [
+   "detail"
+  ],
+  "kind": "text"
  },
  "5_世帯への配慮_必要": {
   "key": "outlook.householdConsideration",
@@ -788,6 +817,13 @@
    }
   ]
  },
+ "5_虐待の疑い_内容": {
+  "key": "outlook.abuseSuspicion",
+  "path": [
+   "detail"
+  ],
+  "kind": "text"
+ },
  "5_退院後の世帯_その他": {
   "key": "outlook.household",
   "path": [
@@ -800,6 +836,13 @@
     "value": "その他"
    }
   ]
+ },
+ "5_退院後の世帯_その他の内容": {
+  "key": "outlook.household",
+  "path": [
+   "other"
+  ],
+  "kind": "text"
  },
  "5_退院後の世帯_子と同居": {
   "key": "outlook.household",

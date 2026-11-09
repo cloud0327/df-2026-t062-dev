@@ -171,6 +171,11 @@
   "kind": "enum",
   "value": "その他"
  },
+ "p1_受付方法_その他の内容": {
+  "key": "intake.methodOther",
+  "path": [],
+  "kind": "text"
+ },
  "p1_受付方法_来所": {
   "key": "intake.method",
   "path": [],
@@ -450,44 +455,9 @@
   "value": "男"
  },
  "p1_相談者_続柄": {
-  "key": "consulter",
-  "path": [
-   "relationship"
-  ],
-  "kind": "choiceText",
-  "options": [
-   {
-    "text": "配偶者",
-    "value": "配偶者"
-   },
-   {
-    "text": "子",
-    "value": "子"
-   },
-   {
-    "text": "子の配偶者",
-    "value": "子の配偶者"
-   },
-   {
-    "text": "孫",
-    "value": "孫"
-   },
-   {
-    "text": "兄弟姉妹",
-    "value": "兄弟姉妹"
-   },
-   {
-    "text": "親",
-    "value": "親"
-   },
-   {
-    "text": "その他の親族",
-    "value": "その他の親族"
-   },
-   {
-    "text": "親族以外",
-    "value": "親族以外"
-   }
+  "kind": "derived",
+  "keys": [
+   "consulter"
   ]
  },
  "p1_相談者_電話": {
@@ -591,44 +561,9 @@
   "value": "男"
  },
  "p1_緊急連絡先_続柄": {
-  "key": "emergencyContact",
-  "path": [
-   "relationship"
-  ],
-  "kind": "choiceText",
-  "options": [
-   {
-    "text": "配偶者",
-    "value": "配偶者"
-   },
-   {
-    "text": "子",
-    "value": "子"
-   },
-   {
-    "text": "子の配偶者",
-    "value": "子の配偶者"
-   },
-   {
-    "text": "孫",
-    "value": "孫"
-   },
-   {
-    "text": "兄弟姉妹",
-    "value": "兄弟姉妹"
-   },
-   {
-    "text": "親",
-    "value": "親"
-   },
-   {
-    "text": "その他の親族",
-    "value": "その他の親族"
-   },
-   {
-    "text": "親族以外",
-    "value": "親族以外"
-   }
+  "kind": "derived",
+  "keys": [
+   "emergencyContact"
   ]
  },
  "p1_緊急連絡先_電話": {
@@ -1041,6 +976,13 @@
   ],
   "kind": "date",
   "part": "m"
+ },
+ "p1_身体障害者手帳_内容": {
+  "key": "handbook.physical",
+  "path": [
+   "detail"
+  ],
+  "kind": "text"
  },
  "p1_身体障害者手帳_有": {
   "key": "handbook.physical",
@@ -2709,9 +2651,16 @@
   "kind": "text"
  },
  "p3_成年後見制度": {
-  "kind": "derived",
-  "keys": [
-   "welfare.adultGuardianship"
+  "key": "welfare.adultGuardianship",
+  "path": [
+   "has"
+  ],
+  "kind": "choiceText",
+  "options": [
+   {
+    "text": "✓",
+    "value": true
+   }
   ]
  },
  "p3_成年後見制度_保佐": {
@@ -3430,6 +3379,40 @@
   ],
   "kind": "text"
  },
+ "p4_受診1_頻度_回数": {
+  "key": "health.visits",
+  "path": [
+   0,
+   "frequencyCount"
+  ],
+  "kind": "number"
+ },
+ "p4_受診1_頻度_月": {
+  "key": "health.visits",
+  "path": [
+   0,
+   "frequencyUnit"
+  ],
+  "kind": "enum",
+  "value": "月"
+ },
+ "p4_受診1_頻度_補足": {
+  "key": "health.visits",
+  "path": [
+   0,
+   "frequencyNote"
+  ],
+  "kind": "text"
+ },
+ "p4_受診1_頻度_週": {
+  "key": "health.visits",
+  "path": [
+   0,
+   "frequencyUnit"
+  ],
+  "kind": "enum",
+  "value": "週"
+ },
  "p4_受診2_不定期": {
   "key": "health.visits",
   "path": [
@@ -3569,6 +3552,40 @@
    "phone"
   ],
   "kind": "text"
+ },
+ "p4_受診2_頻度_回数": {
+  "key": "health.visits",
+  "path": [
+   1,
+   "frequencyCount"
+  ],
+  "kind": "number"
+ },
+ "p4_受診2_頻度_月": {
+  "key": "health.visits",
+  "path": [
+   1,
+   "frequencyUnit"
+  ],
+  "kind": "enum",
+  "value": "月"
+ },
+ "p4_受診2_頻度_補足": {
+  "key": "health.visits",
+  "path": [
+   1,
+   "frequencyNote"
+  ],
+  "kind": "text"
+ },
+ "p4_受診2_頻度_週": {
+  "key": "health.visits",
+  "path": [
+   1,
+   "frequencyUnit"
+  ],
+  "kind": "enum",
+  "value": "週"
  },
  "p4_受診3_不定期": {
   "key": "health.visits",
@@ -3710,6 +3727,40 @@
   ],
   "kind": "text"
  },
+ "p4_受診3_頻度_回数": {
+  "key": "health.visits",
+  "path": [
+   2,
+   "frequencyCount"
+  ],
+  "kind": "number"
+ },
+ "p4_受診3_頻度_月": {
+  "key": "health.visits",
+  "path": [
+   2,
+   "frequencyUnit"
+  ],
+  "kind": "enum",
+  "value": "月"
+ },
+ "p4_受診3_頻度_補足": {
+  "key": "health.visits",
+  "path": [
+   2,
+   "frequencyNote"
+  ],
+  "kind": "text"
+ },
+ "p4_受診3_頻度_週": {
+  "key": "health.visits",
+  "path": [
+   2,
+   "frequencyUnit"
+  ],
+  "kind": "enum",
+  "value": "週"
+ },
  "p4_受診4_不定期": {
   "key": "health.visits",
   "path": [
@@ -3849,6 +3900,40 @@
    "phone"
   ],
   "kind": "text"
+ },
+ "p4_受診4_頻度_回数": {
+  "key": "health.visits",
+  "path": [
+   3,
+   "frequencyCount"
+  ],
+  "kind": "number"
+ },
+ "p4_受診4_頻度_月": {
+  "key": "health.visits",
+  "path": [
+   3,
+   "frequencyUnit"
+  ],
+  "kind": "enum",
+  "value": "月"
+ },
+ "p4_受診4_頻度_補足": {
+  "key": "health.visits",
+  "path": [
+   3,
+   "frequencyNote"
+  ],
+  "kind": "text"
+ },
+ "p4_受診4_頻度_週": {
+  "key": "health.visits",
+  "path": [
+   3,
+   "frequencyUnit"
+  ],
+  "kind": "enum",
+  "value": "週"
  },
  "p4_往診可能な医療機関_名称": {
   "key": "health.homeVisitInstitution",
@@ -4874,6 +4959,13 @@
    }
   ]
  },
+ "p5_支援機器_内容": {
+  "key": "communication.supportDevice",
+  "path": [
+   "detail"
+  ],
+  "kind": "text"
+ },
  "p5_特記_コミュニケーション": {
   "key": "notes.communication",
   "path": [],
@@ -4932,6 +5024,13 @@
     "value": false
    }
   ]
+ },
+ "p5_言語障害_内容": {
+  "key": "communication.speechDisorder",
+  "path": [
+   "detail"
+  ],
+  "kind": "text"
  },
  "p5_起居介助_サービス実施": {
   "key": "assist.rising",
@@ -5310,6 +5409,13 @@
    }
   ]
  },
+ "p6_主食_現状_その他の内容": {
+  "key": "meal.staple",
+  "path": [
+   "currentOther"
+  ],
+  "kind": "text"
+ },
  "p6_主食_現状_普通食": {
   "key": "meal.staple",
   "path": [
@@ -5374,6 +5480,13 @@
     "value": "その他"
    }
   ]
+ },
+ "p6_主食_計画_その他の内容": {
+  "key": "meal.staple",
+  "path": [
+   "planOther"
+  ],
+  "kind": "text"
  },
  "p6_主食_計画_普通食": {
   "key": "meal.staple",
@@ -5473,6 +5586,13 @@
    }
   ]
  },
+ "p6_副食_現状_その他の内容": {
+  "key": "meal.side",
+  "path": [
+   "currentOther"
+  ],
+  "kind": "text"
+ },
  "p6_副食_現状_ミキサー食": {
   "key": "meal.side",
   "path": [
@@ -5524,6 +5644,13 @@
     "value": "その他"
    }
   ]
+ },
+ "p6_副食_計画_その他の内容": {
+  "key": "meal.side",
+  "path": [
+   "planOther"
+  ],
+  "kind": "text"
  },
  "p6_副食_計画_ミキサー食": {
   "key": "meal.side",
@@ -6738,6 +6865,13 @@
   "kind": "multi",
   "value": "その他"
  },
+ "p6_食事の内容_その他の内容": {
+  "key": "meal.diet",
+  "path": [
+   "other"
+  ],
+  "kind": "text"
+ },
  "p6_食事の内容_一般食": {
   "key": "meal.diet",
   "path": [
@@ -6762,6 +6896,13 @@
   "kind": "multi",
   "value": "糖尿食"
  },
+ "p6_食事の内容_糖尿食_kcal": {
+  "key": "meal.diet",
+  "path": [
+   "diabetesKcal"
+  ],
+  "kind": "number"
+ },
  "p6_食事の内容_高血圧食": {
   "key": "meal.diet",
   "path": [
@@ -6770,11 +6911,23 @@
   "kind": "multi",
   "value": "高血圧食"
  },
+ "p6_食事の内容_高血圧食_塩分g": {
+  "key": "meal.diet",
+  "path": [
+   "saltGrams"
+  ],
+  "kind": "number"
+ },
  "p6_食事場所_その他": {
   "key": "meal.place",
   "path": [],
   "kind": "multi",
   "value": "その他"
+ },
+ "p6_食事場所_その他の内容": {
+  "key": "meal.placeOther",
+  "path": [],
+  "kind": "text"
  },
  "p6_食事場所_その他居室内": {
   "key": "meal.place",
@@ -8430,6 +8583,13 @@
    }
   ]
  },
+ "p8_社会活動_友人知人との交流_内容": {
+  "key": "social.friends",
+  "path": [
+   "detail"
+  ],
+  "kind": "text"
+ },
  "p8_社会活動_地域近隣との交流_あり": {
   "key": "social.neighbors",
   "path": [
@@ -8456,6 +8616,13 @@
    }
   ]
  },
+ "p8_社会活動_地域近隣との交流_内容": {
+  "key": "social.neighbors",
+  "path": [
+   "detail"
+  ],
+  "kind": "text"
+ },
  "p8_社会活動_家族等近親者との交流_あり": {
   "key": "social.family",
   "path": [
@@ -8481,6 +8648,13 @@
     "value": false
    }
   ]
+ },
+ "p8_社会活動_家族等近親者との交流_内容": {
+  "key": "social.family",
+  "path": [
+   "detail"
+  ],
+  "kind": "text"
  },
  "p8_緊急連絡・見守りの方法": {
   "key": "watchMethod",
@@ -8615,6 +8789,13 @@
     "value": "不明"
    }
   ]
+ },
+ "p9_医師_感染症_内容": {
+  "key": "doctor.infection",
+  "path": [
+   "detail"
+  ],
+  "kind": "text"
  },
  "p9_医師_感染症_有": {
   "key": "doctor.infection",

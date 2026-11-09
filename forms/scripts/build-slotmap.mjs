@@ -16,14 +16,17 @@ const BYKEY = new Map(FIELDS.fields.filter((f) => f.key).map((f) => [f.key, f]))
 const choicesOf = (spec) => (typeof spec.choices === 'string' ? FIELDS.choiceSets[spec.choices] : spec.choices) ?? [];
 const subsOf = (spec) => spec.fields ?? FIELDS.types[spec.of]?.fields ?? [];
 
-// 条件つきで出る欄の、見本を入れるときの前提（例: 要介護度は「認定済」のときだけ出る）
-const CONTEXT = {
-  'cert.careLevel': [{ 'cert.status': '認定済' }],
-  'cert.expectedCareLevel': [{ 'cert.status': '新規申請中' }, { 'cert.status': '未申請' }],
-  'cert.applicationDate': [{ 'cert.status': '新規申請中' }, { 'cert.status': '区分変更申請中' }],
-  'household.typeOther': [{ 'household.type': 'その他' }],
-  'meal.diet.diabetesKcal': [{ 'meal.diet': '糖尿食' }],
-};
+// 条件つきで出る欄の、見本を入れるときの前提。fields.json の requires から作る
+//   欄の前提: { "cert.status": ["認定済"] } → { "cert.status": "認定済" } のデータを足して見本を入れる
+//   中の項目の前提: 同じまとまりの中の項目（has: true など）を足して見本を入れる
+const asValue = (spec, v) => (spec?.type === 'multi' ? [v] : v);
+function contextsOf(requires, specOf) {
+  if (!requires) return [{}];
+  const out = [];
+  for (const [k, values] of Object.entries(requires)) for (const v of values) out.push({ [k]: asValue(specOf(k), v) });
+  return out.length ? out : [{}];
+}
+const CONTEXT = Object.fromEntries(FIELDS.fields.filter((f) => f.key && f.requires).map((f) => [f.key, contextsOf(f.requires, (k) => BYKEY.get(k))]));
 
 const MARK = 'ZQ7';
 const DATES = [
@@ -104,7 +107,12 @@ function build(form) {
       if (['enum', 'multi', 'bool', 'text', 'longtext', 'number', 'date'].includes(spec.type)) {
         probeValue(key, [], spec, top, base);
       } else if (spec.type === 'object') {
-        for (const sub of subsOf(spec)) probeValue(key, [sub.key], sub, (v) => top({ [sub.key]: v }), base);
+        const subs = subsOf(spec);
+        for (const sub of subs) {
+          for (const sctx of contextsOf(sub.requires, (k) => subs.find((x) => x.key === k))) {
+            probeValue(key, [sub.key], sub, (v) => top({ ...sctx, [sub.key]: v }), inputsOf(top(sctx)));
+          }
+        }
       } else if (spec.type === 'list') {
         const subs = subsOf(spec);
         // 行を「種類」で引く表（services.used の kind など）か: 1 行目と 2 行目に同じ値を入れて、同じ欄が変わるか
@@ -117,17 +125,22 @@ function build(form) {
         if (keySub) {
           for (const c of choicesOf(keySub)) {
             for (const [slot] of changed(top([{ [keySub.key]: c }]), base)) note(slot, { key, path: [{ [keySub.key]: c }], kind: 'row', keySub: keySub.key, value: c });
-            const rowBase = inputsOf(top([{ [keySub.key]: c }]));
             for (const sub of subs) {
               if (sub === keySub) continue;
-              probeValue(key, [{ [keySub.key]: c }, sub.key], sub, (v) => top([{ [keySub.key]: c, [sub.key]: v }]), rowBase);
+              for (const sctx of contextsOf(sub.requires, (k) => subs.find((x) => x.key === k))) {
+                const row = { [keySub.key]: c, ...sctx };
+                probeValue(key, [{ [keySub.key]: c }, sub.key], sub, (v) => top([{ ...row, [sub.key]: v }]), inputsOf(top([row])));
+              }
             }
           }
         } else {
           for (let i = 0; i < 8; i++) {
             const rows = (row) => top([...Array.from({ length: i }, () => ({})), row]);
-            const rowBase = inputsOf(rows({}));
-            for (const sub of subs) probeValue(key, [i, sub.key], sub, (v) => rows({ [sub.key]: v }), rowBase);
+            for (const sub of subs) {
+              for (const sctx of contextsOf(sub.requires, (k) => subs.find((x) => x.key === k))) {
+                probeValue(key, [i, sub.key], sub, (v) => rows({ ...sctx, [sub.key]: v }), inputsOf(rows(sctx)));
+              }
+            }
           }
         }
       }

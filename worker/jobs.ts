@@ -1,6 +1,7 @@
 // 録音 1 本の処理（決まった流れ）: 文字にする → 話した人 → 2 層改で欄の値 → 型の確かめ → applyBatch。
 // 段ごとに結果を jobs.steps に残し、やり直しでは済んだ段を飛ばす（STT と Gemini の費用を 2 回払わない）。
 // ログには中身（話・値）を出さない。出すのは、ジョブの id・段・時間・エラーの種類・使った量だけ。
+import { normalizeValue } from '../core/normalize.ts'
 import { validValue } from '../core/schema.ts'
 import type { Db } from '../db/pool.ts'
 import { applyBatch } from '../db/repo.ts'
@@ -111,7 +112,9 @@ export async function runJob(deps: WorkerDeps, jobId: string): Promise<void> {
     const proposed: Record<string, { value: unknown, cite?: string[] }> = {}
     let dropped = 0
     for (const [k, v] of Object.entries(written.values)) {
-      if (validValue(k, v.value)) proposed[k] = v
+      const value = normalizeValue(k, v.value)
+      // AI が書く日付は、年月日そろったものだけ
+      if (validValue(k, value, { strictDates: true })) proposed[k] = { ...v, value }
       else dropped++
     }
     await setStep(db, jobId, 'write', { write: { seconds: (Date.now() - w0) / 1000, values: Object.keys(proposed).length, dropped, failed: written.failed, usage: written.usage satisfies Usage, first } })

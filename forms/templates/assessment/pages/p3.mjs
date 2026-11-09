@@ -69,7 +69,7 @@ spec('p3_生活保護', 'check', '生活保護', R(18, 100, 99, 103.5), yes('wel
 spec('p3_生活福祉資金貸付', 'check', '生活福祉資金貸付', R(18, 100, 103.5, 108), has('welfare.programs', '生活福祉資金貸付'));
 spec('p3_高齢者住宅整備資金貸付', 'check', '高齢者住宅整備資金貸付', R(18, 100, 108, 112.5), has('welfare.programs', '高齢者住宅整備資金貸付'));
 spec('p3_日常生活自立支援事業', 'check', '日常生活自立支援事業', R(18, 100, 112.5, 117), has('welfare.programs', '日常生活自立支援事業'));
-spec('p3_成年後見制度', 'check', '成年後見制度', R(18, 50, 117, 122), (v) => !!v['welfare.adultGuardianship']);
+spec('p3_成年後見制度', 'check', '成年後見制度', R(18, 50, 117, 122), (v) => v['welfare.adultGuardianship']?.has === true || !!v['welfare.adultGuardianship']?.type);
 for (const [label, region] of [['成年後見', R(48, 68, 117, 122)], ['保佐', R(68, 82, 117, 122)], ['補助', R(81, 96, 117, 122)]]) {
   spec(`p3_成年後見制度_${label}`, 'check', label, region, (v) => v['welfare.adultGuardianship']?.type === label);
 }

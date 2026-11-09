@@ -49,13 +49,6 @@ const INSTITUTIONS = [
   ['かかりつけ薬局', 'health.pharmacy', R(48, 199, 251.5, 261.3)],
 ];
 
-const toHalf = (t) => t.replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
-/** 「月1回」「週 2 回」のような頻度の文字を { unit: '週'|'月', n: '1' } に分ける。分けられなければ null */
-function parseFreq(text) {
-  const m = /(週|月)\s*([0-9]+)/.exec(toHalf(s(text)));
-  return m ? { unit: m[1], n: m[2] } : null;
-}
-
 export function slots(P) {
   const out = [];
   const add = (...a) => out.push(...a.flat());
@@ -158,17 +151,17 @@ export function inputs(data) {
   for (let i = 0; i < N_VISITS; i++) {
     const n = i + 1;
     const x = visits[i] || {};
-    const f = x.frequencyType === '定期' ? parseFreq(x.frequency) : null;
+    const regular = x.frequencyType === '定期';
     o[`p4_受診${n}_病名`] = s(x.disease);
     o[`p4_受診${n}_薬あり`] = ck(x.medication === true);
     o[`p4_受診${n}_薬なし`] = ck(x.medication === false);
     o[`p4_受診${n}_発症時期`] = s(x.onset);
     o[`p4_受診${n}_定期`] = ck(x.frequencyType === '定期');
     o[`p4_受診${n}_不定期`] = ck(x.frequencyType === '不定期');
-    o[`p4_受診${n}_頻度_週`] = mark(f?.unit === '週');
-    o[`p4_受診${n}_頻度_月`] = mark(f?.unit === '月');
-    o[`p4_受診${n}_頻度_回数`] = f ? f.n : '';
-    o[`p4_受診${n}_頻度_補足`] = !f && x.frequencyType === '定期' ? s(x.frequency) : '';
+    o[`p4_受診${n}_頻度_週`] = mark(regular && x.frequencyUnit === '週');
+    o[`p4_受診${n}_頻度_月`] = mark(regular && x.frequencyUnit === '月');
+    o[`p4_受診${n}_頻度_回数`] = regular ? s(x.frequencyCount) : '';
+    o[`p4_受診${n}_頻度_補足`] = regular ? s(x.frequencyNote) : '';
     o[`p4_受診${n}_通院`] = ck(x.visitType === '通院');
     o[`p4_受診${n}_往診`] = ck(x.visitType === '往診');
     o[`p4_受診${n}_医療機関`] = s(x.institution);

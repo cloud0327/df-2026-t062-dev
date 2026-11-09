@@ -1,6 +1,6 @@
 """fields.json を確かめて、チームが読む表（欄の一覧.md）を作る。
 
-使い方: python3 design/make_table.py
+使い方: python3 core/make_table.py（docs/欄の一覧.md に書き出す）
 """
 import collections
 import json
@@ -9,7 +9,7 @@ import sys
 
 HERE = pathlib.Path(__file__).parent
 SRC = HERE / "fields.json"
-OUT = HERE / "欄の一覧.md"
+OUT = HERE.parent / "docs" / "欄の一覧.md"
 
 TYPE_LABEL = {
     "text": "文字", "longtext": "文章", "date": "日付", "number": "数", "bool": "はい・いいえ",
@@ -53,6 +53,22 @@ def check(d):
             for fk in f.get("forms", {}):
                 if fk not in d["forms"]:
                     errors.append(f"{k}: forms のキーが不明 {fk}")
+        if "shared" in f and (not top or f["shared"] is not True or f.get("type") in ("object", "list", "image")):
+            errors.append(f"{where}.{k}: shared は、いちばん上の段の 1 つの値の欄に true で付ける")
+        if f.get("type") == "list":
+            rk = f.get("rowKey")
+            if not rk:
+                errors.append(f"{where}.{k}: list に rowKey がない")
+            elif rk != "order" and rk not in {x["key"] for x in sub_fields(f, types)}:
+                errors.append(f"{where}.{k}: rowKey の項目がない {rk}")
+        subs = sub_fields(f, types)
+        sib = {x["key"]: x for x in subs}
+        for sub in subs:
+            for rk_, vs in sub.get("requires", {}).items():
+                if rk_ not in sib:
+                    errors.append(f"{where}.{k}.{sub['key']}: requires の項目がない {rk_}")
+            if "detail" in sub and sib.get(sub["detail"], {}).get("type") not in ("text", "longtext"):
+                errors.append(f"{where}.{k}.{sub['key']}: detail の文字の項目がない {sub['detail']}")
         for sub in f.get("fields", []):
             check_field(sub, f"{where}.{k}", False)
 
@@ -69,6 +85,16 @@ def check(d):
 
     # 必須の欄（required）: 欄があり、その様式の欄で、重複がないこと
     by_key = {f["key"]: f for f in d["fields"] if "key" in f}
+    for f in by_key.values():
+        for rk_, vs in f.get("requires", {}).items():
+            t = by_key.get(rk_)
+            if t is None:
+                errors.append(f"{f['key']}: requires の欄がない {rk_}")
+            elif t["type"] in ("enum", "multi"):
+                ch = t["choices"] if isinstance(t["choices"], list) else choice_sets.get(t["choices"], [])
+                for v in vs:
+                    if v not in ch:
+                        errors.append(f"{f['key']}: requires の値が {rk_} の選択肢にない {v}")
     for form, req in d.get("required", {}).items():
         if form not in d["forms"]:
             errors.append(f"required: 様式が不明 {form}")
@@ -84,6 +110,34 @@ def check(d):
                 errors.append(f"required.{form}: 重複 {kk}")
             seen_req.add(kk)
     return errors
+
+
+def sub_fields(f, types):
+    """object・list の中の項目（of なら types の形）"""
+    if "fields" in f:
+        return f["fields"]
+    if "of" in f and f["of"] in types:
+        return types[f["of"]]["fields"]
+    return []
+
+
+def requires_text(req):
+    """{"cert.status": ["認定済"]} → 「cert.status が 認定済」"""
+    def val(v):
+        return "はい" if v is True else "いいえ" if v is False else str(v)
+    return "、".join(f"`{k}` が {'・'.join(val(v) for v in vs)}" for k, vs in req.items())
+
+
+def relation_text(f):
+    """すべての欄の表の「関係」の列"""
+    out = []
+    if f.get("shared"):
+        out.append("書類をまたいで同じ値")
+    if f.get("requires"):
+        out.append("前提: " + requires_text(f["requires"]))
+    if f.get("rowKey"):
+        out.append("行の見分け: " + ("並び順" if f["rowKey"] == "order" else f"`{f['rowKey']}`"))
+    return "<br>".join(out)
 
 
 def required_keys(d, form):
@@ -131,7 +185,7 @@ def main():
     lines = []
     lines.append("# 欄の一覧（自動生成）")
     lines.append("")
-    lines.append("`design/fields.json` から `design/make_table.py` で作った表。**この表は直接直さない**。直すときは fields.json を直してから作り直す。")
+    lines.append("`core/fields.json` から `core/make_table.py` で作った表。**この表は直接直さない**。直すときは fields.json を直してから `python3 core/make_table.py` で作り直す。")
     lines.append("説明は [`データの定義.md`](データの定義.md)。")
     lines.append("")
 
@@ -142,7 +196,7 @@ def main():
     per_form = collections.Counter(fk for f in fields for fk in f.get("forms", {}))
     lines.append("- 様式ごとの欄の数: " + "、".join(f"{d['forms'][k]['name'].split('（')[0]} {per_form[k]}" for k in FORM_ORDER))
     shared = [f for f in fields if len(f.get("forms", {})) >= 2]
-    lines.append(f"- 2 つ以上の様式で使い回す欄: {len(shared)}")
+    lines.append(f"- 2 つ以上の様式で使い回す欄: {len(shared)}（そのうち、書類をまたいで 1 つの値で持つ基本情報（`shared`）: {sum(1 for f in fields if f.get('shared'))}）")
     req_assess = set(required_keys(d, "assess"))
     lines.append(f"- アセスメントの必須の欄: {len(req_assess)}")
     lines.append("")
@@ -167,6 +221,77 @@ def main():
             loc = "<br>".join(esc(f["forms"]["assess"]) for f in fs)
             lines.append(f"| {label} | {keytxt} | {item} | {loc} |")
         lines.append("")
+
+    # 欄どうしの関係（プログラムが使う属性）
+    types = d["types"]
+    lines.append("## 欄どうしの関係（プログラムが使う属性）")
+    lines.append("")
+    lines.append("属性の意味は [`データの定義.md`](データの定義.md) の「欄の書き方」。")
+    lines.append("")
+    lines.append("### 書類をまたいで同じ値（`shared`）")
+    lines.append("")
+    lines.append("どの書類で直しても、その利用者の全部の書類に入る。")
+    lines.append("")
+    lines.append("| 欄 | key |")
+    lines.append("|---|---|")
+    for f in fields:
+        if f.get("shared"):
+            lines.append(f"| {esc(f['label'])} | `{f['key']}` |")
+    lines.append("")
+    lines.append("### 前提（`requires`）")
+    lines.append("")
+    lines.append("前提が満たされているときだけ意味のある欄・項目。中の項目の前提は、同じまとまりの中の項目を指す。")
+    lines.append("")
+    lines.append("| 欄・項目 | key | 前提 |")
+    lines.append("|---|---|---|")
+
+    def walk_requires(f, path, label):
+        if f.get("requires"):
+            lines.append(f"| {esc(label)} | `{path}` | {requires_text(f['requires'])} |")
+        for sub in sub_fields(f, types):
+            walk_requires(sub, f"{path}.{sub['key']}", f"{label} › {sub['label']}")
+
+    for f in fields:
+        walk_requires(f, f["key"], f["label"])
+    lines.append("")
+    lines.append("### 行の見分け方（`rowKey`）")
+    lines.append("")
+    lines.append("繰り返しの欄で、どの項目で行を見分けるか。「並び順」は、行の順番で見分ける。")
+    lines.append("")
+    lines.append("| 欄 | key | 見分ける項目 |")
+    lines.append("|---|---|---|")
+
+    def walk_lists(f, path, label):
+        if f["type"] == "list":
+            rk = f.get("rowKey", "")
+            name = "並び順" if rk == "order" else next((f"{x['label']}（`{rk}`）" for x in sub_fields(f, types) if x["key"] == rk), rk)
+            lines.append(f"| {esc(label)} | `{path}` | {esc(name)} |")
+        for sub in sub_fields(f, types):
+            walk_lists(sub, f"{path}.{sub['key']}", f"{label} › {sub['label']}")
+
+    for f in fields:
+        walk_lists(f, f["key"], f["label"])
+    lines.append("")
+    lines.append("### 詳しい欄（`detail`）")
+    lines.append("")
+    lines.append("選択肢にない言い方（「長男の嫁」など）を入れる項目。")
+    lines.append("")
+    lines.append("| 項目 | 場所 | 詳しい欄 |")
+    lines.append("|---|---|---|")
+    seen_detail = set()
+
+    def walk_detail(f, path, label, where):
+        for sub in sub_fields(f, types):
+            if "detail" in sub:
+                place = f"types.{f['of']}" if "of" in f else path
+                if (place, sub["key"]) not in seen_detail:
+                    seen_detail.add((place, sub["key"]))
+                    lines.append(f"| {esc(sub['label'])}（`{sub['key']}`） | `{place}` | `{sub['detail']}` |")
+            walk_detail(sub, f"{path}.{sub['key']}", label, where)
+
+    for f in fields:
+        walk_detail(f, f["key"], f["label"], f["key"])
+    lines.append("")
 
     # 23 項目ごとの数
     lines.append("## 23 項目ごとの欄の数")
@@ -200,15 +325,15 @@ def main():
             group = f["group"]
             lines.append(f"### {group}")
             lines.append("")
-            lines.append("| 欄 | key | 型 | 選択肢 | 23 項目 | アセスメントで必須 | 出どころ | 様式 | メモ |")
-            lines.append("|---|---|---|---|---|---|---|---|---|")
+            lines.append("| 欄 | key | 型 | 選択肢 | 23 項目 | アセスメントで必須 | 出どころ | 様式 | 関係 | メモ |")
+            lines.append("|---|---|---|---|---|---|---|---|---|---|")
             continue
         item = "—" if f["item23"] is None else str(f["item23"])
         forms = "<br>".join(f"{k}: {esc(v)}" for k, v in f.get("forms", {}).items()) or "（様式に欄なし）"
         src = "・".join(f["source"])
         must = "●" if f["key"] in req_assess else ""
         lines.append(
-            f"| {esc(f['label'])} | `{f['key']}` | {esc(type_text(f, d))} | {esc(choices_text(f, d['choiceSets']))} | {item} | {must} | {src} | {forms} | {esc(f.get('note', ''))} |"
+            f"| {esc(f['label'])} | `{f['key']}` | {esc(type_text(f, d))} | {esc(choices_text(f, d['choiceSets']))} | {item} | {must} | {src} | {forms} | {relation_text(f)} | {esc(f.get('note', ''))} |"
         )
     lines.append("")
 

@@ -33,7 +33,7 @@ export const usesKeys = [
   ...SURVEY.map(([, k]) => k),
   ...[...ASSIST_MEAL, ...ASSIST_TOILET, ...ASSIST_OUT].map(([, k]) => k),
   'meal.staple', 'meal.side', 'meal.eatingAssistLevel',
-  'meal.place', 'meal.stepToDining', 'meal.chewing', 'meal.diet', 'notes.meal',
+  'meal.place', 'meal.placeOther', 'meal.stepToDining', 'meal.chewing', 'meal.diet', 'notes.meal',
   'excretion.urination', 'excretion.defecation', 'excretion.urgeUrine', 'excretion.urgeStool', 'notes.excretion',
   'notes.outing',
 ];
@@ -134,8 +134,8 @@ export function inputs(data) {
   for (const [prefix, key, choices] of [['p6_主食', 'meal.staple', STAPLE], ['p6_副食', 'meal.side', SIDE]]) {
     const m = data[key] || {};
     Object.assign(o, pickInputs(prefix, choices, m.current, m.plan));
-    o[`${prefix}_現状_その他の内容`] = m.current === 'その他' ? s(m.other) : '';
-    o[`${prefix}_計画_その他の内容`] = m.plan === 'その他' ? s(m.other) : '';
+    o[`${prefix}_現状_その他の内容`] = m.current === 'その他' ? s(m.currentOther) : '';
+    o[`${prefix}_計画_その他の内容`] = m.plan === 'その他' ? s(m.planOther) : '';
   }
   const ea = data['meal.eatingAssistLevel'] || {};
   Object.assign(o, levelInputs('p6_摂取介助', ea.current, ea.plan));
@@ -147,7 +147,7 @@ export function inputs(data) {
 
   const place = data['meal.place'] || [];
   for (const p of PLACE) o[`p6_食事場所_${p}`] = ck(place.includes(p));
-  o['p6_食事場所_その他の内容'] = '';
+  o['p6_食事場所_その他の内容'] = place.includes('その他') ? s(data['meal.placeOther']) : '';
   o['p6_食堂までの段差_あり'] = ck(data['meal.stepToDining'] === true);
   o['p6_食堂までの段差_なし'] = ck(data['meal.stepToDining'] === false);
   const ch = s(data['meal.chewing']);

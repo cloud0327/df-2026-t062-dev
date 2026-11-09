@@ -118,9 +118,9 @@
   "health.teeth": ["局部義歯"],
   "health.notes": "膝の痛みで長く歩けない。認知症は軽度で、服薬の管理に支援が要る。",
   "health.visits": [
-    {"disease": "高血圧症", "medication": true, "onset": "60歳ごろ", "frequencyType": "定期", "frequency": "月1回", "visitType": "通院", "institution": "見本内科クリニック", "department": "内科", "doctor": "見本 医師", "phone": "000-777-0001", "notes": "長女が付き添う"},
-    {"disease": "変形性膝関節症", "medication": true, "onset": "75歳ごろ", "frequencyType": "定期", "frequency": "月2回", "visitType": "通院", "institution": "見本整形外科", "department": "整形外科", "doctor": "見本 整形", "phone": "000-777-0002", "notes": "タクシーで通院"},
-    {"disease": "アルツハイマー型認知症", "medication": true, "onset": "2025年", "frequencyType": "定期", "frequency": "月1回", "visitType": "通院", "institution": "見本内科クリニック", "department": "内科", "doctor": "見本 医師", "phone": "000-777-0001", "notes": ""}
+    {"disease": "高血圧症", "medication": true, "onset": "60歳ごろ", "frequencyType": "定期", "frequencyUnit": "月", "frequencyCount": 1, "visitType": "通院", "institution": "見本内科クリニック", "department": "内科", "doctor": "見本 医師", "phone": "000-777-0001", "notes": "長女が付き添う"},
+    {"disease": "変形性膝関節症", "medication": true, "onset": "75歳ごろ", "frequencyType": "定期", "frequencyUnit": "月", "frequencyCount": 2, "visitType": "通院", "institution": "見本整形外科", "department": "整形外科", "doctor": "見本 整形", "phone": "000-777-0002", "notes": "タクシーで通院"},
+    {"disease": "アルツハイマー型認知症", "medication": true, "onset": "2025年", "frequencyType": "定期", "frequencyUnit": "月", "frequencyCount": 1, "visitType": "通院", "institution": "見本内科クリニック", "department": "内科", "doctor": "見本 医師", "phone": "000-777-0001", "notes": ""}
   ],
   "health.homeVisitInstitution": {"has": false},
   "health.emergencyInstitution": {"has": true, "name": "見本総合病院", "phone": "000-777-0100"},

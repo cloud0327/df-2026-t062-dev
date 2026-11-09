@@ -11,7 +11,7 @@ import { textSlot as T, checkSlot as C, circleSlot as O, ck, mark, s, ymdParts, 
 export const pdfPage = 2;
 
 export const usesKeys = [
-  'intake.date', 'intake.method', 'intake.receiver', 'intake.referralRoute', 'intake.planRequestNotifiedDate',
+  'intake.date', 'intake.method', 'intake.methodOther', 'intake.receiver', 'intake.referralRoute', 'intake.planRequestNotifiedDate',
   'person.name', 'person.sex', 'person.birthDate', 'person.age', 'person.postalCode', 'person.address', 'person.phone', 'person.mobile',
   'emergencyContact', 'consulter',
   'complaint.person', 'complaint.family', 'person.lifeHistory',
@@ -226,7 +226,7 @@ export function inputs(data) {
   put(ymdIn('p1_相談受付日', v('intake.date')));
   const method = s(v('intake.method'));
   for (const m of ['訪問', '電話', '来所', 'その他']) o[`p1_受付方法_${m}`] = mark(method === m);
-  o['p1_受付方法_その他の内容'] = '';
+  o['p1_受付方法_その他の内容'] = method === 'その他' ? s(v('intake.methodOther')) : '';
   o['p1_初回相談受付者'] = s(v('intake.receiver'));
 
   o['p1_本人氏名'] = s(v('person.name'));
@@ -284,7 +284,7 @@ export function inputs(data) {
   const ph = v('handbook.physical') || {};
   o['p1_身体障害者手帳_種'] = s(ph.kind);
   o['p1_身体障害者手帳_級'] = s(ph.grade);
-  o['p1_身体障害者手帳_内容'] = '';
+  o['p1_身体障害者手帳_内容'] = s(ph.detail);
   o['p1_療育手帳_程度'] = s(v('handbook.rehabilitation')?.degree);
   o['p1_精神障害者手帳_級'] = s(v('handbook.mental')?.grade);
   const dw = v('disabilityWelfare.certificate');

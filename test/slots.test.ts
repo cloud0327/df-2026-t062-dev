@@ -52,8 +52,16 @@ test('援助の表のマスは、○ と △ をそれぞれの選択肢に戻�
 
 test('対応のない欄は印字欄ごとの値で持ち、保存した値と違えば黄になる', () => {
   const form = FORMS.assessment
-  const v = applyChanges({}, editSlot(form, {}, 'p1_受付方法_その他の内容', '自宅で'))
-  assert.equal(v['slot:p1_受付方法_その他の内容'], '自宅で')
+  const slot = form.template.schemas.flat().map((x) => x.name).find((n) => !(n in form.slotmap))
+  assert.ok(slot, '対応のない欄がない（段 2 で slot: をなくしたら、このテストも外す）')
+  const v = applyChanges({}, editSlot(form, {}, slot, '自宅で'))
+  assert.equal(v[`slot:${slot}`], '自宅で')
   const marks = slotMarks(form, v, {}, () => undefined)
-  assert.equal(marks.get('p1_受付方法_その他の内容'), 'cm')
+  assert.equal(marks.get(slot), 'cm')
+})
+
+test('受付方法の「その他」の中身は、受付方法が「その他」のときの欄の値になる', () => {
+  const form = FORMS.assessment
+  const v = applyChanges({ 'intake.method': 'その他' }, editSlot(form, { 'intake.method': 'その他' }, 'p1_受付方法_その他の内容', '自宅で'))
+  assert.equal(v['intake.methodOther'], '自宅で')
 })

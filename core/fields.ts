@@ -15,6 +15,14 @@ export interface FieldSpec {
   source?: string[]
   forms?: Record<string, string>
   note?: string
+  /** 書類をまたいで同じ値（基本情報） */
+  shared?: boolean
+  /** この欄に意味があるときの前提。欄なら欄の key、中の項目なら同じまとまりの中の項目の key → 値の一覧 */
+  requires?: Record<string, (string | boolean | number)[]>
+  /** 選択肢にない言い方を入れる詳しい欄（同じまとまりの中の項目の key） */
+  detail?: string
+  /** list の行を見分ける項目の key。"order" は行の並びの順で見分ける */
+  rowKey?: string
 }
 
 interface FieldsFile {
@@ -47,13 +55,9 @@ export function subFieldsOf(f: FieldSpec): FieldSpec[] {
 }
 
 /**
- * 書類をまたいで 1 つの値として持つ基本情報（AI基盤の設計 4.4）。どの書類で直しても、全部の書類に入る。
- * キャンバスの決めごとに合わせて、性別も同じ値にする。
+ * 書類をまたいで 1 つの値として持つ基本情報（fields.json の shared）。どの書類で直しても、全部の書類に入る。
  */
-export const SHARED_KEYS = new Set([
-  'person.name', 'person.sex', 'person.birthDate', 'person.age',
-  'person.postalCode', 'person.address', 'person.phone',
-])
+export const SHARED_KEYS = new Set(FIELD_LIST.filter((f) => f.shared).map((f) => f.key))
 
 export const isShared = (key: string) => SHARED_KEYS.has(key)
 

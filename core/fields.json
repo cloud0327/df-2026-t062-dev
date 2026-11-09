@@ -1,10 +1,10 @@
 {
   "meta": {
     "title": "欄の一覧（データの定義）叩き台",
-    "version": "0.1",
+    "version": "0.2",
     "created": "2026-11-07",
     "item23Version": "課題分析標準項目 平成11年11月12日 老企第29号（改正前の版）",
-    "note": "説明は design/データの定義.md。表は design/make_table.py で作る"
+    "note": "説明は docs/データの定義.md。表は core/make_table.py で docs/欄の一覧.md に作る"
   },
   "item23": [
     {"no": 1, "name": "基本情報（受付、利用者等基本情報）"},
@@ -108,7 +108,8 @@
         {"key": "name", "label": "氏名", "type": "text"},
         {"key": "sex", "label": "性別", "type": "enum", "choices": ["男", "女"]},
         {"key": "age", "label": "年齢", "type": "number"},
-        {"key": "relationship", "label": "本人との続柄", "type": "enum", "choices": "続柄"},
+        {"key": "relationship", "label": "本人との続柄", "type": "enum", "choices": "続柄", "detail": "relationshipDetail"},
+        {"key": "relationshipDetail", "label": "本人との続柄（詳しく。長女・長男の嫁など）", "type": "text"},
         {"key": "address", "label": "住所", "type": "text"},
         {"key": "phone", "label": "電話", "type": "text"},
         {"key": "mobile", "label": "携帯", "type": "text"}
@@ -127,7 +128,7 @@
       "label": "あり・なし＋内容",
       "fields": [
         {"key": "has", "label": "有無", "type": "bool"},
-        {"key": "detail", "label": "内容", "type": "text"}
+        {"key": "detail", "label": "内容", "type": "text", "requires": {"has": [true]}}
       ]
     },
     "Institution": {
@@ -143,6 +144,7 @@
     {"group": "受付・アセスメント・計画の情報"},
     {"key": "intake.date", "label": "相談受付日", "type": "date", "item23": 1, "source": ["talk"], "forms": {"assess": "p.1 上 年月日相談受付"}},
     {"key": "intake.method", "label": "相談受付の方法", "type": "enum", "choices": ["訪問", "電話", "来所", "その他"], "item23": 1, "source": ["talk"], "forms": {"assess": "p.1 上 訪問・電話・来所・その他（　）"}},
+    {"key": "intake.methodOther", "label": "相談受付の方法（その他の内容）", "type": "text", "item23": 1, "source": ["talk"], "forms": {"assess": "p.1 上 その他（　）"}, "requires": {"intake.method": ["その他"]}},
     {"key": "intake.receiver", "label": "初回相談受付者", "type": "text", "item23": 1, "source": ["setting"], "forms": {"assess": "p.1 上 初回相談受付者"}},
     {"key": "intake.referralRoute", "label": "相談経路（紹介者）", "type": "text", "item23": 1, "source": ["talk"], "forms": {"assess": "p.1 相談経路（紹介者）"}},
     {"key": "intake.planRequestNotifiedDate", "label": "居宅サービス計画作成依頼の届出年月日", "type": "date", "item23": 1, "source": ["talk"], "forms": {"assess": "p.1 居宅サービス計画作成依頼の届出"}},
@@ -162,14 +164,14 @@
     {"key": "office.careManagerName", "label": "担当ケアマネ氏名", "type": "text", "item23": null, "source": ["setting"], "forms": {"cp1": "居宅サービス計画作成者氏名", "adm": "ケアマネジャー氏名"}},
 
     {"group": "本人"},
-    {"key": "person.name", "label": "氏名", "type": "text", "item23": 1, "source": ["doc:被保険者証", "talk"], "forms": {"assess": "p.1 本人氏名", "cp1": "利用者名", "cp2": "利用者名", "cp3": "利用者名", "adm": "1. 患者氏名"}},
+    {"key": "person.name", "label": "氏名", "type": "text", "item23": 1, "source": ["doc:被保険者証", "talk"], "forms": {"assess": "p.1 本人氏名", "cp1": "利用者名", "cp2": "利用者名", "cp3": "利用者名", "adm": "1. 患者氏名"}, "shared": true},
     {"key": "person.nameKana", "label": "フリガナ", "type": "text", "item23": 1, "source": ["talk"], "forms": {"adm": "1. 患者氏名（フリガナ）"}},
-    {"key": "person.sex", "label": "性別", "type": "enum", "choices": ["男", "女"], "item23": 1, "source": ["doc:被保険者証", "talk"], "forms": {"assess": "p.1 男・女", "adm": "1. 性別"}},
-    {"key": "person.birthDate", "label": "生年月日", "type": "date", "item23": 1, "source": ["doc:被保険者証"], "forms": {"assess": "p.1 M・T・S 年月日生まれ", "cp1": "生年月日", "adm": "1. 生年月日（明・大・昭）"}, "note": "様式ごとに元号の書き方が違う（M/T/S と 明・大・昭）。値は西暦の日付で持ち、出すときに変換する"},
-    {"key": "person.age", "label": "年齢", "type": "number", "item23": 1, "source": ["derived"], "forms": {"assess": "p.1 （　歳）", "adm": "1. 年齢"}, "note": "生年月日と記入日から計算"},
-    {"key": "person.postalCode", "label": "郵便番号", "type": "text", "item23": 1, "source": ["doc:被保険者証", "talk"], "forms": {"assess": "p.1 住所 〒", "adm": "1. 住所 〒"}},
-    {"key": "person.address", "label": "住所", "type": "text", "item23": 1, "source": ["doc:被保険者証", "talk"], "forms": {"assess": "p.1 住所", "cp1": "住所", "adm": "1. 住所"}},
-    {"key": "person.phone", "label": "電話", "type": "text", "item23": 1, "source": ["talk"], "forms": {"assess": "p.1 住所の ☎", "adm": "1. 電話番号"}},
+    {"key": "person.sex", "label": "性別", "type": "enum", "choices": ["男", "女"], "item23": 1, "source": ["doc:被保険者証", "talk"], "forms": {"assess": "p.1 男・女", "adm": "1. 性別"}, "shared": true},
+    {"key": "person.birthDate", "label": "生年月日", "type": "date", "item23": 1, "source": ["doc:被保険者証"], "forms": {"assess": "p.1 M・T・S 年月日生まれ", "cp1": "生年月日", "adm": "1. 生年月日（明・大・昭）"}, "shared": true, "note": "様式ごとに元号の書き方が違う（M/T/S と 明・大・昭）。値は西暦の日付で持ち、出すときに変換する"},
+    {"key": "person.age", "label": "年齢", "type": "number", "item23": 1, "source": ["derived"], "forms": {"assess": "p.1 （　歳）", "adm": "1. 年齢"}, "shared": true, "note": "生年月日と記入日から計算"},
+    {"key": "person.postalCode", "label": "郵便番号", "type": "text", "item23": 1, "source": ["doc:被保険者証", "talk"], "forms": {"assess": "p.1 住所 〒", "adm": "1. 住所 〒"}, "shared": true},
+    {"key": "person.address", "label": "住所", "type": "text", "item23": 1, "source": ["doc:被保険者証", "talk"], "forms": {"assess": "p.1 住所", "cp1": "住所", "adm": "1. 住所"}, "shared": true},
+    {"key": "person.phone", "label": "電話", "type": "text", "item23": 1, "source": ["talk"], "forms": {"assess": "p.1 住所の ☎", "adm": "1. 電話番号"}, "shared": true},
     {"key": "person.mobile", "label": "携帯", "type": "text", "item23": 1, "source": ["talk"], "forms": {"assess": "p.1 住所の 携帯"}},
     {"key": "person.lifeHistory", "label": "これまでの生活の経緯（生活歴）", "type": "longtext", "item23": 2, "source": ["talk"], "forms": {"assess": "p.1 これまでの生活の経緯（主な生活史）", "adm": "3. 本人の生活歴"}, "note": "入院時は短く要約して出す"},
     {"key": "person.interests", "label": "趣味・興味・関心", "type": "longtext", "item23": 15, "source": ["talk"], "forms": {"adm": "3. 本人の趣味・興味・関心領域等"}, "note": "アセスメント用紙には専用の欄がない（1日のスケジュールの「②したいと思っていること（興味、関心）」に書くことはある）"},
@@ -183,7 +185,7 @@
     {"key": "complaint.family", "label": "相談内容（介護者・家族）", "type": "longtext", "item23": 7, "source": ["talk"], "forms": {"assess": "p.1 相談内容（介護者・家族）"}},
     {"key": "intention.person", "label": "本人の生活に対する意向", "type": "longtext", "item23": 7, "source": ["talk"], "forms": {"cp1": "利用者及び家族の生活に対する意向を踏まえた課題分析の結果（の意向の部分）", "adm": "3. 入院前の本人の生活に対する意向"}, "note": "入院時は「同封の居宅サービス計画（1）参照」にチェックする出し方もある"},
     {"key": "intention.family", "label": "家族の生活に対する意向", "type": "longtext", "item23": 7, "source": ["talk"], "forms": {"cp1": "同上", "adm": "3. 入院前の家族の生活に対する意向"}},
-    {"key": "desiredSupports", "label": "本人が受けたい支援／今後必要になると思われる支援", "type": "list", "item23": 7, "source": ["talk"], "forms": {"assess": "p.2 本人が受けたい支援／今後必要になると思われる支援"}, "fields": [
+    {"key": "desiredSupports", "label": "本人が受けたい支援／今後必要になると思われる支援", "type": "list", "item23": 7, "source": ["talk"], "forms": {"assess": "p.2 本人が受けたい支援／今後必要になると思われる支援"}, "rowKey": "order", "fields": [
       {"key": "content", "label": "支援", "type": "text"},
       {"key": "provider", "label": "支援提供者", "type": "text"},
       {"key": "note", "label": "特記事項", "type": "text"}
@@ -199,7 +201,8 @@
       {"key": "has", "label": "有無", "type": "bool"},
       {"key": "grade", "label": "等級", "type": "text"},
       {"key": "kind", "label": "種級", "type": "text"},
-      {"key": "issuedDate", "label": "交付日", "type": "date"}
+      {"key": "issuedDate", "label": "交付日", "type": "date"},
+      {"key": "detail", "label": "障害の内容", "type": "text"}
     ]},
     {"key": "handbook.rehabilitation", "label": "療育手帳", "type": "object", "item23": 3, "source": ["doc:手帳"], "forms": {"assess": "p.1 療育手帳（有無・程度・交付日）"}, "fields": [
       {"key": "has", "label": "有無", "type": "bool"},
@@ -215,28 +218,29 @@
     {"key": "disabilityWelfare.certificate", "label": "障害福祉サービス受給者証", "type": "bool", "item23": 3, "source": ["doc:手帳"], "forms": {"assess": "p.1 障害福祉サービス受給者証の有無"}},
     {"key": "disabilityWelfare.supportCategory", "label": "障害支援区分", "type": "text", "item23": 3, "source": ["doc:手帳"], "forms": {"assess": "p.1 障害支援区分→（　）"}},
     {"key": "independenceSupportMedical", "label": "自立支援医療受給者証", "type": "bool", "item23": 3, "source": ["doc:手帳"], "forms": {"assess": "p.1 自立支援医療受給者証の有無"}},
-    {"key": "pensions", "label": "年金", "type": "list", "item23": 3, "source": ["talk"], "forms": {"assess": "p.3 制度利用状況 年金（老齢関係・障害関係・遺族・寡婦）、恩給", "adm": "1. 年金などの種類（国民年金・厚生年金・障害年金・その他）"}, "note": "様式ごとに分け方が違う（アセスは老齢・障害・遺族、入院時は国民・厚生・障害）。細かい種類で持ち、出すときに読み替える", "fields": [
+    {"key": "pensions", "label": "年金", "type": "list", "item23": 3, "source": ["talk"], "forms": {"assess": "p.3 制度利用状況 年金（老齢関係・障害関係・遺族・寡婦）、恩給", "adm": "1. 年金などの種類（国民年金・厚生年金・障害年金・その他）"}, "rowKey": "kind", "note": "様式ごとに分け方が違う（アセスは老齢・障害・遺族、入院時は国民・厚生・障害）。細かい種類で持ち、出すときに読み替える", "fields": [
       {"key": "kind", "label": "種類", "type": "enum", "choices": ["国民年金（老齢基礎）", "厚生年金（老齢）", "共済年金（老齢）", "障害年金", "遺族年金", "寡婦年金", "恩給", "その他"]},
       {"key": "detail", "label": "内容", "type": "text"}
     ]},
     {"key": "welfare.publicAssistance", "label": "生活保護", "type": "bool", "item23": 3, "source": ["talk"], "forms": {"assess": "p.3 制度利用状況 生活保護", "adm": "1. 年金などの種類 □生活保護"}},
     {"key": "welfare.programs", "label": "その他の制度の利用", "type": "multi", "choices": ["特別障害者手当", "生活福祉資金貸付", "高齢者住宅整備資金貸付", "日常生活自立支援事業"], "item23": 3, "source": ["talk"], "forms": {"assess": "p.3 制度利用状況"}},
     {"key": "welfare.adultGuardianship", "label": "成年後見制度", "type": "object", "item23": 3, "source": ["talk"], "forms": {"assess": "p.3 成年後見制度（成年後見・保佐・補助、成年後見人等）"}, "fields": [
-      {"key": "type", "label": "類型", "type": "enum", "choices": ["成年後見", "保佐", "補助"]},
-      {"key": "guardian", "label": "成年後見人等", "type": "text"}
+      {"key": "has", "label": "成年後見制度を使っている", "type": "bool"},
+      {"key": "type", "label": "類型", "type": "enum", "choices": ["成年後見", "保佐", "補助"], "requires": {"has": [true]}},
+      {"key": "guardian", "label": "成年後見人等", "type": "text", "requires": {"has": [true]}}
     ]},
-    {"key": "welfare.others", "label": "その他の制度", "type": "list", "item23": 3, "source": ["talk"], "forms": {"assess": "p.3 制度利用状況 その他（3 行）"}, "fields": [
+    {"key": "welfare.others", "label": "その他の制度", "type": "list", "item23": 3, "source": ["talk"], "forms": {"assess": "p.3 制度利用状況 その他（3 行）"}, "rowKey": "order", "fields": [
       {"key": "name", "label": "制度", "type": "text"}
     ]},
 
     {"group": "認定情報"},
     {"key": "cert.status", "label": "認定の状況", "type": "enum", "choices": ["認定済", "新規申請中", "区分変更申請中", "更新申請中", "未申請"], "item23": 8, "source": ["doc:被保険者証", "talk"], "forms": {"assess": "p.1 要介護認定 済・未（見込み）", "cp1": "認定済・申請中", "adm": "1. 入院時の要介護度 申請中・区分変更・未申請"}, "note": "様式ごとに選択肢の粒度が違う。細かい方で持ち、出すときにまとめる"},
-    {"key": "cert.careLevel", "label": "要介護度", "type": "enum", "choices": "要介護度", "item23": 8, "source": ["doc:被保険者証"], "forms": {"assess": "p.1 要介護認定 済 → 非該当・要支援1・2・要介護1〜5", "cp1": "要介護状態区分", "adm": "1. 入院時の要介護度 要支援（　）要介護（　）"}},
-    {"key": "cert.expectedCareLevel", "label": "要介護度の見込み（申請中のとき）", "type": "enum", "choices": "要介護度", "item23": 8, "source": ["judge"], "forms": {"assess": "p.1 要介護認定 未（見込み）→"}},
+    {"key": "cert.careLevel", "label": "要介護度", "type": "enum", "choices": "要介護度", "item23": 8, "source": ["doc:被保険者証"], "forms": {"assess": "p.1 要介護認定 済 → 非該当・要支援1・2・要介護1〜5", "cp1": "要介護状態区分", "adm": "1. 入院時の要介護度 要支援（　）要介護（　）"}, "requires": {"cert.status": ["認定済"]}},
+    {"key": "cert.expectedCareLevel", "label": "要介護度の見込み（申請中のとき）", "type": "enum", "choices": "要介護度", "item23": 8, "source": ["judge"], "forms": {"assess": "p.1 要介護認定 未（見込み）→"}, "requires": {"cert.status": ["新規申請中", "区分変更申請中", "更新申請中", "未申請"]}},
     {"key": "cert.certifiedDate", "label": "認定日", "type": "date", "item23": 8, "source": ["doc:被保険者証"], "forms": {"assess": "p.1 認定日", "cp1": "認定日"}},
     {"key": "cert.validFrom", "label": "認定の有効期間（開始）", "type": "date", "item23": 8, "source": ["doc:被保険者証"], "forms": {"cp1": "認定の有効期間", "adm": "1. 有効期間"}},
     {"key": "cert.validTo", "label": "認定の有効期間（終了）", "type": "date", "item23": 8, "source": ["doc:被保険者証"], "forms": {"cp1": "認定の有効期間", "adm": "1. 有効期間"}},
-    {"key": "cert.applicationDate", "label": "申請日", "type": "date", "item23": 8, "source": ["talk"], "forms": {"adm": "1. 申請中（申請日）／区分変更（申請日）"}},
+    {"key": "cert.applicationDate", "label": "申請日", "type": "date", "item23": 8, "source": ["talk"], "forms": {"adm": "1. 申請中（申請日）／区分変更（申請日）"}, "requires": {"cert.status": ["新規申請中", "区分変更申請中", "更新申請中"]}},
     {"key": "cert.reviewBoardOpinion", "label": "介護認定審査会の意見及びサービスの種類の指定", "type": "longtext", "item23": 8, "source": ["doc:被保険者証"], "forms": {"cp1": "介護認定審査会の意見及びサービスの種類の指定"}},
 
     {"group": "日常生活自立度"},
@@ -254,9 +258,9 @@
     ]},
 
     {"group": "家族・介護力"},
-    {"key": "family.members", "label": "家族", "type": "list", "item23": 21, "source": ["talk"], "forms": {"assess": "p.2 家族の一覧（氏名・続柄・同別居・就労の状況・健康状態等・特記事項）。主たる介護者には※", "adm": "2. 主介護者氏名（続柄・才・同居別居・TEL）、キーパーソン（続柄・才・連絡先 TEL）"}, "note": "主介護者・キーパーソンは家族の中の印で持つ。家族以外がキーパーソンのときは relationship を「親族以外」にする", "fields": [
+    {"key": "family.members", "label": "家族", "type": "list", "item23": 21, "source": ["talk"], "forms": {"assess": "p.2 家族の一覧（氏名・続柄・同別居・就労の状況・健康状態等・特記事項）。主たる介護者には※", "adm": "2. 主介護者氏名（続柄・才・同居別居・TEL）、キーパーソン（続柄・才・連絡先 TEL）"}, "rowKey": "order", "note": "主介護者・キーパーソンは家族の中の印で持つ。家族以外がキーパーソンのときは relationship を「親族以外」にする", "fields": [
       {"key": "name", "label": "氏名", "type": "text"},
-      {"key": "relationship", "label": "続柄", "type": "enum", "choices": "続柄"},
+      {"key": "relationship", "label": "続柄", "type": "enum", "choices": "続柄", "detail": "relationshipDetail"},
       {"key": "relationshipDetail", "label": "続柄（詳しく。長女など）", "type": "text"},
       {"key": "sex", "label": "性別", "type": "enum", "choices": ["男", "女"]},
       {"key": "age", "label": "年齢", "type": "number"},
@@ -266,25 +270,26 @@
       {"key": "health", "label": "健康状態等", "type": "text"},
       {"key": "note", "label": "特記事項（自治会、ボランティア等社会的活動）", "type": "text"},
       {"key": "phone", "label": "電話", "type": "text"},
+      {"key": "mobile", "label": "携帯", "type": "text"},
       {"key": "isMainCaregiver", "label": "主たる介護者", "type": "bool"},
       {"key": "isKeyPerson", "label": "キーパーソン", "type": "bool"}
     ]},
     {"key": "family.genogram", "label": "家族構成図", "type": "image", "item23": 21, "source": ["derived"], "forms": {"assess": "p.2 家族構成図"}, "note": "family.members から SVG で描く。親子・兄弟の関係を描くには members に親子のつながりの情報を足す必要がある"},
     {"key": "family.careSituation", "label": "家族の介護の状況・課題", "type": "longtext", "item23": 21, "source": ["talk"], "forms": {"assess": "p.2 家族の介護の状況・課題"}},
     {"key": "household.type", "label": "世帯構成", "type": "enum", "choices": "世帯", "item23": 21, "source": ["talk"], "forms": {"adm": "2. 世帯構成"}, "note": "family.members の同居から候補を出せる"},
-    {"key": "household.typeOther", "label": "世帯構成（その他の内容）", "type": "text", "item23": 21, "source": ["talk"], "forms": {"adm": "2. 世帯構成 その他（　）"}},
+    {"key": "household.typeOther", "label": "世帯構成（その他の内容）", "type": "text", "item23": 21, "source": ["talk"], "forms": {"adm": "2. 世帯構成 その他（　）"}, "requires": {"household.type": ["その他"]}},
     {"key": "household.daytimeAlone", "label": "日中独居", "type": "bool", "item23": 21, "source": ["talk"], "forms": {"adm": "2. 世帯構成 ＊日中独居"}},
     {"key": "watchMethod", "label": "緊急連絡・見守りの方法", "type": "text", "item23": 21, "source": ["talk"], "forms": {"assess": "p.8 緊急連絡・見守りの方法"}},
 
     {"group": "今利用しているサービス・支援"},
     {"key": "services.asOf", "label": "サービス利用状況の時点", "type": "date", "item23": 4, "source": ["talk"], "forms": {"assess": "p.2 （　年　月　日時点）"}},
-    {"key": "services.used", "label": "利用しているサービス", "type": "list", "item23": 4, "source": ["talk"], "forms": {"assess": "p.2〜3 サービス利用状況（在宅利用）のチェックと回数"}, "note": "入院時情報提供書には書かず、ケアプラン第 1〜3 表を同封して伝える（admission.enclosedCarePlan）", "fields": [
+    {"key": "services.used", "label": "利用しているサービス", "type": "list", "item23": 4, "source": ["talk"], "forms": {"assess": "p.2〜3 サービス利用状況（在宅利用）のチェックと回数"}, "rowKey": "kind", "note": "入院時情報提供書には書かず、ケアプラン第 1〜3 表を同封して伝える（admission.enclosedCarePlan）。「その他」の行は 2 つまで（その他どうしは行の並びの順で見分ける）", "fields": [
       {"key": "kind", "label": "サービス", "type": "enum", "choices": ["訪問介護", "訪問型サービス", "訪問入浴介護", "訪問看護", "訪問リハビリテーション", "居宅療養管理指導", "通所介護", "通所型サービス", "通所リハビリテーション", "短期入所生活介護", "短期入所療養介護", "特定施設入居者生活介護", "看護小規模多機能型居宅介護", "福祉用具貸与", "特定福祉用具販売", "住宅改修", "夜間対応型訪問介護", "認知症対応型通所介護", "小規模多機能型居宅介護", "認知症対応型共同生活介護", "定期巡回・随時対応型訪問介護看護", "その他の生活支援サービス", "配食サービス", "洗濯サービス", "移動または外出支援", "友愛訪問", "老人福祉センター", "老人憩いの家", "ガイドヘルパー", "身障／補装具・日常生活用具", "生活支援員の訪問（日常生活自立支援事業）", "ふれあい・いきいきサロン", "市町村特別給付", "その他"]},
       {"key": "name", "label": "名称（その他のとき）", "type": "text"},
       {"key": "amount", "label": "量", "type": "number"},
       {"key": "unit", "label": "単位", "type": "enum", "choices": ["回/月", "日/月", "品目", "あり・なし"]}
     ]},
-    {"key": "services.informal", "label": "インフォーマルな支援", "type": "list", "item23": 4, "source": ["talk"], "forms": {"assess": "p.2 インフォーマルな支援活用状況（支援提供者・活用している支援内容・特記事項）"}, "fields": [
+    {"key": "services.informal", "label": "インフォーマルな支援", "type": "list", "item23": 4, "source": ["talk"], "forms": {"assess": "p.2 インフォーマルな支援活用状況（支援提供者・活用している支援内容・特記事項）"}, "rowKey": "order", "fields": [
       {"key": "provider", "label": "支援提供者", "type": "text"},
       {"key": "content", "label": "活用している支援内容", "type": "text"},
       {"key": "note", "label": "特記事項", "type": "text"}
@@ -328,12 +333,14 @@
     {"key": "health.teeth", "label": "歯の状況", "type": "multi", "choices": ["歯あり", "歯なし", "総入れ歯", "局部義歯"], "item23": 18, "source": ["talk"], "forms": {"assess": "p.4 歯の状況"}},
     {"key": "health.bodyMap", "label": "障害等の部位（人体図）", "type": "image", "item23": 10, "source": ["talk"], "forms": {"assess": "p.4 障害等の部位（△障害部位 ×欠損部位 ●褥瘡部位）"}, "note": "人が描く。デモでは扱わない"},
     {"key": "health.notes", "label": "健康の特記事項（病気やけが、障害等に関わる事項。改善の可能性等）", "type": "longtext", "item23": 10, "source": ["talk", "doc:主治医意見書"], "forms": {"assess": "p.4 特記事項"}},
-    {"key": "health.visits", "label": "現在の受診状況（病気ごと）", "type": "list", "item23": 10, "source": ["talk", "doc:主治医意見書"], "forms": {"assess": "p.4 現在の受診状況（4 列）"}, "note": "アセスメント用紙は 4 列まで", "fields": [
+    {"key": "health.visits", "label": "現在の受診状況（病気ごと）", "type": "list", "item23": 10, "source": ["talk", "doc:主治医意見書"], "forms": {"assess": "p.4 現在の受診状況（4 列）"}, "rowKey": "order", "note": "アセスメント用紙は 4 列まで", "fields": [
       {"key": "disease", "label": "病名", "type": "text"},
       {"key": "medication", "label": "薬の有無", "type": "bool"},
       {"key": "onset", "label": "発症時期", "type": "text"},
       {"key": "frequencyType", "label": "受診頻度", "type": "enum", "choices": ["定期", "不定期"]},
-      {"key": "frequency", "label": "定期のときの頻度（週・月に何回）", "type": "text"},
+      {"key": "frequencyUnit", "label": "定期の受診の頻度（週か月か）", "type": "enum", "choices": ["週", "月"], "requires": {"frequencyType": ["定期"]}},
+      {"key": "frequencyCount", "label": "定期の受診の回数（1 週・1 か月あたり）", "type": "number", "requires": {"frequencyType": ["定期"]}},
+      {"key": "frequencyNote", "label": "頻度の補足（「2 週に 1 回」など、週・月の回数で書けないとき）", "type": "text", "requires": {"frequencyType": ["定期"]}},
       {"key": "visitType", "label": "受診状況", "type": "enum", "choices": ["通院", "往診"]},
       {"key": "institution", "label": "医療機関", "type": "text"},
       {"key": "department", "label": "診療科", "type": "text"},
@@ -406,25 +413,28 @@
     {"key": "meal.staple", "label": "主食の現状と計画", "type": "object", "item23": 19, "source": ["talk", "judge"], "forms": {"assess": "p.6 主食（現状・計画）"}, "fields": [
       {"key": "current", "label": "現状", "type": "enum", "choices": "主食"},
       {"key": "plan", "label": "計画", "type": "enum", "choices": "主食"},
-      {"key": "other", "label": "その他の内容", "type": "text"}
+      {"key": "currentOther", "label": "現状が「その他」のときの内容", "type": "text", "requires": {"current": ["その他"]}},
+      {"key": "planOther", "label": "計画が「その他」のときの内容", "type": "text", "requires": {"plan": ["その他"]}}
     ]},
     {"key": "meal.side", "label": "副食の現状と計画", "type": "object", "item23": 19, "source": ["talk", "judge"], "forms": {"assess": "p.6 副食（現状・計画）"}, "fields": [
       {"key": "current", "label": "現状", "type": "enum", "choices": "副食"},
       {"key": "plan", "label": "計画", "type": "enum", "choices": "副食"},
-      {"key": "other", "label": "その他の内容", "type": "text"}
+      {"key": "currentOther", "label": "現状が「その他」のときの内容", "type": "text", "requires": {"current": ["その他"]}},
+      {"key": "planOther", "label": "計画が「その他」のときの内容", "type": "text", "requires": {"plan": ["その他"]}}
     ]},
     {"key": "meal.eatingAssistLevel", "label": "摂取介助の現状と計画", "type": "object", "item23": 19, "source": ["talk", "judge"], "forms": {"assess": "p.6 摂取介助（現状・計画）"}, "fields": [
       {"key": "current", "label": "現状", "type": "enum", "choices": "見守り介助_現状"},
       {"key": "plan", "label": "計画", "type": "enum", "choices": "見守り介助_計画"}
     ]},
     {"key": "meal.place", "label": "食事場所", "type": "multi", "choices": ["食堂", "居室ベッド上", "布団上", "その他居室内", "その他"], "item23": 19, "source": ["talk"], "forms": {"assess": "p.6 その他食事の現状 ア."}},
+    {"key": "meal.placeOther", "label": "食事場所（その他の内容）", "type": "text", "item23": 19, "source": ["talk"], "forms": {"assess": "p.6 その他食事の現状 ア. その他（　）"}, "requires": {"meal.place": ["その他"]}},
     {"key": "meal.stepToDining", "label": "食堂までの段差", "type": "bool", "item23": 19, "source": ["talk"], "forms": {"assess": "p.6 その他食事の現状 イ."}},
     {"key": "meal.chewing", "label": "咀嚼の状況", "type": "enum", "choices": ["問題なし", "噛みにくい", "時々噛みにくい", "とても噛みにくい"], "item23": 19, "source": ["talk"], "forms": {"assess": "p.6 その他食事の現状 ウ."}},
     {"key": "meal.diet", "label": "食事の内容", "type": "object", "item23": 19, "source": ["talk", "doc:主治医意見書"], "forms": {"assess": "p.6 その他食事の現状 エ.（一般食・糖尿食 Kcal・高血圧食 g・抗潰瘍食・その他）"}, "fields": [
       {"key": "kinds", "label": "種類", "type": "multi", "choices": ["一般食", "糖尿食", "高血圧食", "抗潰瘍食", "その他"]},
-      {"key": "diabetesKcal", "label": "糖尿食のカロリー（kcal）", "type": "number"},
-      {"key": "saltGrams", "label": "高血圧食の塩分（g）", "type": "number"},
-      {"key": "other", "label": "その他の内容", "type": "text"}
+      {"key": "diabetesKcal", "label": "糖尿食のカロリー（kcal）", "type": "number", "requires": {"kinds": ["糖尿食"]}},
+      {"key": "saltGrams", "label": "高血圧食の塩分（g）", "type": "number", "requires": {"kinds": ["高血圧食"]}},
+      {"key": "other", "label": "その他の内容", "type": "text", "requires": {"kinds": ["その他"]}}
     ]},
     {"key": "notes.meal", "label": "食事の特記、解決すべき課題など", "type": "longtext", "item23": 19, "source": ["talk"], "forms": {"assess": "p.6 食事の特記、解決すべき課題など"}},
     {"key": "excretion.urgeUrine", "label": "尿意", "type": "enum", "choices": ["ある", "ときどきある", "ない"], "item23": 16, "source": ["talk"], "forms": {"assess": "p.6 その他排泄の状況 ア."}},
@@ -530,7 +540,7 @@
     {"key": "assist.visitAccompany", "label": "受診・検査介助", "type": "object", "of": "Assistance", "item23": 10, "source": ["talk", "judge"], "forms": {"assess": "p.9 4)"}},
     {"key": "assist.rehabilitation", "label": "リハビリテーション", "type": "object", "of": "Assistance", "item23": 10, "source": ["talk", "judge"], "forms": {"assess": "p.9 5)"}},
     {"key": "assist.medicalProcedure", "label": "医療処置の管理", "type": "object", "of": "Assistance", "item23": 10, "source": ["talk", "judge"], "forms": {"assess": "p.9 6)"}},
-    {"key": "medical.careDetails", "label": "具体的内容（現状・計画）", "type": "list", "item23": 10, "source": ["talk", "judge"], "forms": {"assess": "p.9 右 具体的内容（現状・計画のチェック）"}, "fields": [
+    {"key": "medical.careDetails", "label": "具体的内容（現状・計画）", "type": "list", "item23": 10, "source": ["talk", "judge"], "forms": {"assess": "p.9 右 具体的内容（現状・計画のチェック）"}, "rowKey": "item", "fields": [
       {"key": "item", "label": "内容", "type": "enum", "choices": ["バイタルサインのチェック", "定期的な病状観察", "内服薬", "坐薬（緩下剤、解熱剤等）", "眼・耳・鼻等の外用薬の使用等", "温・冷あん法、湿布貼付等", "注射", "吸引", "吸入", "自己注射（インスリン療法）", "経管栄養法", "中心静脈栄養法", "酸素療法", "人工呼吸療法", "気管カニューレ管理", "自己導尿", "自己腹膜灌流", "膀胱留置カテーテル管理", "人工肛門・人工膀胱管理", "疼痛管理", "褥瘡管理"]},
       {"key": "current", "label": "現状", "type": "bool"},
       {"key": "plan", "label": "計画", "type": "bool"}
@@ -559,7 +569,7 @@
     ]},
     {"key": "doctor.infection", "label": "感染症の有無", "type": "object", "item23": 10, "source": ["doc:主治医意見書"], "forms": {"assess": "p.9 (7)"}, "fields": [
       {"key": "status", "label": "有無", "type": "enum", "choices": ["無", "有", "不明"]},
-      {"key": "detail", "label": "内容", "type": "text"}
+      {"key": "detail", "label": "内容", "type": "text", "requires": {"status": ["有"]}}
     ]},
 
     {"group": "7 全体のまとめ"},
@@ -578,8 +588,8 @@
     {"key": "advocacy.notes", "label": "権利擁護の備考", "type": "text", "item23": 23, "source": ["judge"], "forms": {"assess": "p.10 備考"}},
 
     {"group": "1 日のスケジュール"},
-    {"key": "dailySchedule", "label": "1 日のスケジュール", "type": "list", "item23": 2, "source": ["talk"], "forms": {"assess": "p.11 1日のスケジュール（0〜24 時）", "cp3": "主な日常生活上の活動"}, "note": "時刻ごとに 1 行。第 3 表には「本人の生活リズム」だけを出す", "fields": [
-      {"key": "time", "label": "時刻", "type": "text"},
+    {"key": "dailySchedule", "label": "1 日のスケジュール", "type": "list", "item23": 2, "source": ["talk"], "forms": {"assess": "p.11 1日のスケジュール（0〜24 時）", "cp3": "主な日常生活上の活動"}, "rowKey": "time", "note": "0〜23 時の 1 時間に 1 行（time は \"0\"〜\"23\"）。第 3 表には「本人の生活リズム」だけを出す", "fields": [
+      {"key": "time", "label": "時刻（時）", "type": "enum", "choices": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23"]},
       {"key": "rhythm", "label": "本人の生活リズム", "type": "text"},
       {"key": "rhythmMark", "label": "記号", "type": "multi", "choices": ["◎排便", "○排尿", "△食事", "☆入浴", "□起床", "■就寝"]},
       {"key": "selfOrWish", "label": "①本人が自分でしていること ②したいと思っていること", "type": "text"},
@@ -595,14 +605,14 @@
       {"key": "reason", "label": "理由", "type": "enum", "choices": ["一人暮らし", "家族等が障害、疾病等", "その他"]},
       {"key": "other", "label": "その他の内容", "type": "text"}
     ]},
-    {"key": "plan.needs", "label": "生活全般の解決すべき課題（ニーズ）と目標・援助内容", "type": "list", "item23": null, "source": ["draft", "judge"], "forms": {"cp2": "第 2 表の各行"}, "note": "1 つのニーズに長期目標、その下に短期目標、その下にサービスがぶら下がる", "fields": [
+    {"key": "plan.needs", "label": "生活全般の解決すべき課題（ニーズ）と目標・援助内容", "type": "list", "item23": null, "source": ["draft", "judge"], "forms": {"cp2": "第 2 表の各行"}, "rowKey": "order", "note": "1 つのニーズに長期目標、その下に短期目標、その下にサービスがぶら下がる", "fields": [
       {"key": "need", "label": "生活全般の解決すべき課題（ニーズ）", "type": "text"},
       {"key": "longGoal", "label": "長期目標", "type": "text"},
       {"key": "longGoalPeriod", "label": "長期目標の期間", "type": "text"},
-      {"key": "shortGoals", "label": "短期目標", "type": "list", "fields": [
+      {"key": "shortGoals", "label": "短期目標", "type": "list", "rowKey": "order", "fields": [
         {"key": "goal", "label": "短期目標", "type": "text"},
         {"key": "period", "label": "短期目標の期間", "type": "text"},
-        {"key": "services", "label": "援助内容", "type": "list", "fields": [
+        {"key": "services", "label": "援助内容", "type": "list", "rowKey": "order", "fields": [
           {"key": "content", "label": "サービス内容", "type": "text"},
           {"key": "insured", "label": "※1 保険給付の対象", "type": "bool"},
           {"key": "kind", "label": "サービス種別", "type": "text"},
@@ -612,7 +622,7 @@
         ]}
       ]}
     ]},
-    {"key": "plan.weekly", "label": "週間サービス計画", "type": "list", "item23": null, "source": ["draft"], "forms": {"cp3": "月〜日 × 0:00〜24:00 の表"}, "note": "plan.needs のサービスと頻度から AI が案を作る", "fields": [
+    {"key": "plan.weekly", "label": "週間サービス計画", "type": "list", "item23": null, "source": ["draft"], "forms": {"cp3": "月〜日 × 0:00〜24:00 の表"}, "rowKey": "order", "note": "plan.needs のサービスと頻度から AI が案を作る", "fields": [
       {"key": "day", "label": "曜日", "type": "enum", "choices": ["月", "火", "水", "木", "金", "土", "日"]},
       {"key": "start", "label": "開始", "type": "text"},
       {"key": "end", "label": "終了", "type": "text"},
@@ -628,22 +638,24 @@
     {"key": "admission.hospitalStaff", "label": "医療機関のご担当者名", "type": "text", "item23": null, "source": ["event"], "forms": {"adm": "ご担当者名"}},
     {"key": "admission.enclosedCarePlan", "label": "居宅サービス計画書 1・2・3 表を同封", "type": "bool", "item23": 4, "source": ["event"], "forms": {"adm": "4. □居宅サービス計画書1.2.3表"}},
     {"key": "admission.enclosedOther", "label": "その他の同封書類", "type": "text", "item23": 4, "source": ["event"], "forms": {"adm": "4. □その他（　）"}},
+    {"key": "admission.intentionPersonSeePlan", "label": "本人の意向は「同封の居宅サービス計画（1）参照」とする", "type": "bool", "item23": 7, "source": ["event"], "forms": {"adm": "3. 本人の意向 □同封の居宅サービス計画（1）参照"}},
+    {"key": "admission.intentionFamilySeePlan", "label": "家族の意向は「同封の居宅サービス計画（1）参照」とする", "type": "bool", "item23": 7, "source": ["event"], "forms": {"adm": "3. 家族の意向 □同封の居宅サービス計画（1）参照"}},
     {"key": "outlook.requirements", "label": "在宅生活に必要な要件", "type": "longtext", "item23": null, "source": ["judge"], "forms": {"adm": "5. 在宅生活に必要な要件"}},
     {"key": "outlook.household", "label": "退院後の世帯状況", "type": "object", "item23": 21, "source": ["judge"], "forms": {"adm": "5. 退院後の世帯状況"}, "note": "household.* を初期値にして、変わるかをケアマネに聞く", "fields": [
       {"key": "type", "label": "世帯", "type": "enum", "choices": "世帯"},
       {"key": "memberCount", "label": "家族構成員数", "type": "number"},
       {"key": "daytimeAlone", "label": "日中独居", "type": "bool"},
-      {"key": "other", "label": "その他の内容", "type": "text"}
+      {"key": "other", "label": "その他の内容", "type": "text", "requires": {"type": ["その他"]}}
     ]},
     {"key": "outlook.householdConsideration", "label": "世帯に対する配慮", "type": "object", "item23": 23, "source": ["judge"], "forms": {"adm": "5. 世帯に対する配慮（不要・必要（　））"}, "fields": [
       {"key": "needed", "label": "必要", "type": "bool"},
-      {"key": "detail", "label": "内容", "type": "text"}
+      {"key": "detail", "label": "内容", "type": "text", "requires": {"needed": [true]}}
     ]},
     {"key": "outlook.caregiver", "label": "退院後の主介護者", "type": "object", "item23": 21, "source": ["judge"], "forms": {"adm": "5. 退院後の主介護者（本シート2に同じ・左記以外（氏名・続柄・年齢））"}, "fields": [
       {"key": "sameAsNow", "label": "今の主介護者と同じ", "type": "bool"},
-      {"key": "name", "label": "氏名", "type": "text"},
-      {"key": "relationship", "label": "続柄", "type": "text"},
-      {"key": "age", "label": "年齢", "type": "number"}
+      {"key": "name", "label": "氏名", "type": "text", "requires": {"sameAsNow": [false]}},
+      {"key": "relationship", "label": "続柄", "type": "text", "requires": {"sameAsNow": [false]}},
+      {"key": "age", "label": "年齢", "type": "number", "requires": {"sameAsNow": [false]}}
     ]},
     {"key": "outlook.careCapacity", "label": "介護力", "type": "enum", "choices": ["介護力が見込める（十分）", "介護力が見込める（一部）", "介護力は見込めない", "家族や支援者はいない"], "item23": 21, "source": ["judge"], "forms": {"adm": "5. 介護力"}},
     {"key": "outlook.abuseSuspicion", "label": "家族や同居者等による虐待の疑い", "type": "object", "of": "HasDetail", "item23": 23, "source": ["judge"], "forms": {"adm": "5. 家族や同居者等による虐待の疑い（なし・あり（　））"}},

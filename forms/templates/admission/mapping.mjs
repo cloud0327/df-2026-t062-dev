@@ -17,7 +17,7 @@ export const usesKeys = [
   'pensions', 'welfare.publicAssistance',
   'household.type', 'household.typeOther', 'household.daytimeAlone', 'family.members',
   'person.interests', 'person.lifeHistory', 'intention.person', 'intention.family',
-  'admission.enclosedCarePlan', 'admission.enclosedOther',
+  'admission.enclosedCarePlan', 'admission.enclosedOther', 'admission.intentionPersonSeePlan', 'admission.intentionFamilySeePlan',
   'outlook.requirements', 'outlook.household', 'outlook.householdConsideration', 'outlook.caregiver',
   'outlook.careCapacity', 'outlook.abuseSuspicion', 'outlook.notes',
   'conference.inHospital', 'conference.preDischarge', 'conference.preDischargeRequest', 'conference.homeVisitAccompany',
@@ -191,9 +191,9 @@ export function toInputs(data) {
   out['3_趣味・関心'] = s(v('person.interests'));
   out['3_生活歴'] = s(v('person.lifeHistory'));
   out['3_本人の意向'] = s(v('intention.person'));
-  out['3_本人の意向_第1表参照'] = '';
+  out['3_本人の意向_第1表参照'] = ck(v('admission.intentionPersonSeePlan') === true);
   out['3_家族の意向'] = s(v('intention.family'));
-  out['3_家族の意向_第1表参照'] = '';
+  out['3_家族の意向_第1表参照'] = ck(v('admission.intentionFamilySeePlan') === true);
 
   // 4. サービス
   out['4_計画書1・2・3表を同封'] = ck(v('admission.enclosedCarePlan') === true);
