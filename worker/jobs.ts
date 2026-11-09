@@ -1,11 +1,10 @@
 // 録音 1 本の処理（決まった流れ）: 文字にする → 話した人 → 2 層改で欄の値 → 型の確かめ → applyBatch。
 // 段ごとに結果を jobs.steps に残し、やり直しでは済んだ段を飛ばす（STT と Gemini の費用を 2 回払わない）。
 // ログには中身（話・値）を出さない。出すのは、ジョブの id・段・時間・エラーの種類・使った量だけ。
-import { normalizeValue } from '../core/normalize.ts'
 import { randomUUID } from 'node:crypto'
-import { validValue } from '../core/schema.ts'
 import type { Db } from '../db/pool.ts'
 import { applyBatch } from '../db/repo.ts'
+import { incompleteFieldKeys, prepareWriterValues } from './job-values.ts'
 import type { Storage } from '../api/storage.ts'
 import type { Person, Providers, Usage, Utterance, Visit } from './types.ts'
 
@@ -122,20 +121,14 @@ export async function runJob(deps: WorkerDeps, jobId: string): Promise<void> {
     const written = await providers.writer.write({ visits, newVisitId: visits[visits.length - 1].id, current, people, first })
 
     // ④ 型の確かめ（fields.json から作った zod）。通らない値は落として数える
-    const proposed: Record<string, { value: unknown, cite?: string[] }> = {}
-    let dropped = 0
-    for (const [k, v] of Object.entries(written.values)) {
-      const value = normalizeValue(k, v.value)
-      // AI が書く日付は、年月日そろったものだけ
-      if (validValue(k, value, { strictDates: true })) proposed[k] = { ...v, value }
-      else dropped++
-    }
-    await setStep(db, jobId, token, 'write', { write: { seconds: (Date.now() - w0) / 1000, values: Object.keys(proposed).length, dropped, failed: written.failed, usage: written.usage satisfies Usage, first } })
+    const { proposed, droppedFields } = prepareWriterValues(written.values)
+    const incompleteFields = incompleteFieldKeys(written.incompleteFields, droppedFields)
+    await setStep(db, jobId, token, 'write', { write: { seconds: (Date.now() - w0) / 1000, values: Object.keys(proposed).length, dropped: droppedFields.length, droppedFields, failed: written.failed, incompleteFields, usage: written.usage satisfies Usage, first } })
 
     // ⑤ 用紙に反映する（書類の行を止めるのは、ここの数秒だけ）
     await setStep(db, jobId, token, 'apply')
     const n = Number((await db.query("SELECT count(*) AS n FROM batches WHERE document_id = $1 AND kind = 'recording'", [job.document_id])).rows[0].n) + 1
-    const status = written.failed.length || dropped ? 'partial' : 'succeeded'
+    const status = written.failed.length || incompleteFields.length ? 'partial' : 'succeeded'
     const { plan } = await applyBatch(db, {
       officeId: job.office_id, documentId: job.document_id, kind: 'recording', jobId,
       label: `AI 書き込み ${n}・${md(new Date(rec.recorded_at))} の録音`, proposed,

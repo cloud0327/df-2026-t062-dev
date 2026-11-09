@@ -47,7 +47,7 @@ const providers = (write: Providers['writer']['write']): Providers => ({
 })
 const deps = (p: Providers): WorkerDeps => ({ db: async () => db, storage: () => storage, providers: async () => p })
 const value = { 'intake.method': { value: '電話', cite: [] } }
-const result = { values: value, usage: ZERO_USAGE, failed: [] as string[] }
+const result = { values: value, usage: ZERO_USAGE, failed: [] as string[], incompleteFields: [] as string[] }
 const status = async (id: string) => (await db.query('SELECT status, attempts, run_token FROM jobs WHERE id = $1', [id])).rows[0]
 const batches = async (id: string) => Number((await db.query('SELECT count(*) AS n FROM batches WHERE job_id = $1', [id])).rows[0].n)
 
@@ -71,10 +71,10 @@ test('一時失敗後に再配信で再開し、同じジョブの二重配信�
 
 test('部分失敗を API のジョブ情報で伝え、再配信でも二重反映しない', { skip }, async () => {
   const j = await job()
-  await runJob(deps(providers(async () => ({ ...result, failed: ['check:3'] }))), j.jobId)
+  await runJob(deps(providers(async () => ({ ...result, failed: ['check:3'], incompleteFields: ['assessment.lifeHistory'] }))), j.jobId)
   assert.equal((await status(j.jobId)).status, 'partial')
   const view = (await activeJobs(db, staff.officeId, j.clientId))[0]
-  assert.deepEqual(view.failedGroups, ['check:3'])
+  assert.deepEqual(view.incompleteFields, ['assessment.lifeHistory'])
   assert.equal(view.batch?.changes, 2) // AI の欄と初回面談日
   await db.query("UPDATE jobs SET updated_at = now() - interval '1 day' WHERE id = $1", [j.jobId])
   assert.equal((await activeJobs(db, staff.officeId, j.clientId))[0].status, 'partial')

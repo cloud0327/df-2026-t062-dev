@@ -7,7 +7,7 @@ import { useDocument } from '../form/useDocument.ts'
 import { useRecorder } from '../form/useRecorder.ts'
 import { api } from '../lib/api.ts'
 import { linkProps } from '../lib/router.tsx'
-import { failedTopicNames } from '../lib/jobStatus.ts'
+import { incompleteFieldNames } from '../lib/jobStatus.ts'
 import { countText } from '../components/Chrome.tsx'
 
 export function PadWork({ clientId }: { clientId: string }) {
@@ -34,6 +34,7 @@ export function PadWork({ clientId }: { clientId: string }) {
   const pages = state.pages
   const doc = state.doc
   const job = jobs[0]
+  const incompleteNames = job && (job.status === 'partial' || job.status === 'failed') ? incompleteFieldNames(job.incompleteFields) : []
   const running = job && (job.status === 'queued' || job.status === 'processing')
   const phase = recorder.phase === 'rec' ? 'rec'
     : recorder.phase === 'upload' ? 'upload'
@@ -131,13 +132,13 @@ export function PadWork({ clientId }: { clientId: string }) {
       {phase === 'done' && job && (
         <div role="status" className="strip" style={{ background: '#FFF4E5', borderBottom: '1px solid #F0C78A' }}>
           <span aria-hidden="true" style={{ flex: '0 0 auto', width: 28, height: 28, borderRadius: '50%', background: '#E8912D', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5 9-10" /></svg></span>
-          <div style={{ flex: '1 1 auto', minWidth: 0, fontSize: 16 }}><strong>{job.status === 'partial' ? `一部を処理できませんでした。用紙の ${job.batch?.changes ?? 0} か所を書きました。` : `録音から、用紙の ${job.batch?.changes ?? 0} か所を書きました。`}</strong><br /><span style={{ fontSize: 15, color: '#5C3A00' }}>{job.status === 'partial' ? `${job.failedGroups.length ? `確認が必要な項目: ${failedTopicNames(job.failedGroups).join('、')}。` : ''}${job.droppedValues ? `形式が合わず書かなかった値 ${job.droppedValues} 件。` : ''}用紙を確認してください。` : `橙色が AI の書いたところです。${job.batch?.kept ? `あなたが先に書いた ${job.batch.kept} か所（黄色）は、そのままにしています。` : ''}`}</span></div>
+          <div style={{ flex: '1 1 auto', minWidth: 0, fontSize: 16 }}><strong>{job.status === 'partial' ? `一部を処理できませんでした。用紙の ${job.batch?.changes ?? 0} か所を書きました。` : `録音から、用紙の ${job.batch?.changes ?? 0} か所を書きました。`}</strong><br /><span style={{ fontSize: 15, color: '#5C3A00' }}>{incompleteNames.length ? `AIが反映できなかった欄は赤枠です: ${incompleteNames.join('、')}` : job.status === 'partial' ? 'AI が反映できなかった欄があります。用紙を確認してください。' : `橙色が AI の書いたところです。${job.batch?.kept ? `あなたが先に書いた ${job.batch.kept} か所（黄色）は、そのままにしています。` : ''}`}</span></div>
           <button type="button" onClick={() => setDismissed((s) => new Set(s).add(job.id))} style={{ flex: '0 0 auto', font: 'inherit', fontSize: 15, fontWeight: 700, border: 0, background: 'transparent', color: '#874600', cursor: 'pointer', minHeight: 44, padding: '0 6px' }}>OK</button>
         </div>
       )}
       {job?.status === 'failed' && !dismissed.has(job.id) && (
         <div role="alert" className="strip" style={{ background: '#FDE8E7', color: '#A3261C' }}>
-          <div style={{ flex: '1 1 auto' }}>AI 処理を完了できませんでした。録音は保存されています。担当者に確認してください。</div>
+          <div style={{ flex: '1 1 auto' }}>{incompleteNames.length ? `AIが反映できなかった欄は赤枠です: ${incompleteNames.join('、')}。録音し直せます。` : 'AI 処理を完了できませんでした。録音は保存されています。担当者に確認してください。'}</div>
           <button type="button" onClick={() => setDismissed((s) => new Set(s).add(job.id))}>閉じる</button>
         </div>
       )}
@@ -167,7 +168,7 @@ export function PadWork({ clientId }: { clientId: string }) {
                   <button type="button" className="pgsave" disabled={!dirty || phase === 'writing'} onClick={async () => { if (await state.savePage(p.no)) setSavedPages((s) => new Set(s).add(p.no)) }} style={dirty ? undefined : { opacity: 0.35, cursor: 'default' }}>このページを保存</button>
                 </span>
               </div>
-              <FormPage page={p} state={state} touch disabled={phase === 'writing'} batchLabel={batchLabel} glow={phase === 'done'} />
+              <FormPage page={p} state={state} touch disabled={phase === 'writing'} batchLabel={batchLabel} glow={phase === 'done'} incompleteFields={incompleteNames.length ? job?.incompleteFields : undefined} />
             </div>
           )
         })}

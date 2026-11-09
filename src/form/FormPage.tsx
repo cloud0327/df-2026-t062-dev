@@ -21,15 +21,19 @@ interface Props {
   dim?: boolean
   /** 書き終わったところを光らせる（iPad の流れ E） */
   glow?: boolean
+  /** AI が今回の処理で反映できなかった欄の fields.json key */
+  incompleteFields?: string[]
 }
 
-function FormPageInner({ page, state, touch, disabled, batchLabel, dim, glow }: Props) {
+function FormPageInner({ page, state, touch, disabled, batchLabel, dim, glow, incompleteFields = [] }: Props) {
   const [open, setOpen] = useState('')
   const [diffOpen, setDiffOpen] = useState('')
   // 様式の画像は非公開の置き場にある（期限つきの URL）。読めなければ 1 回だけ URL を取り直し、それでもだめなら白い紙に欄だけを出す
   const [noImage, setNoImage] = useState(false)
   const { marks, edit, display } = state
   const image = state.imageOf(page.no)
+  const incompleteKeys = new Set(incompleteFields)
+  const isIncomplete = (s: SlotView) => !!s.binding && incompleteKeys.has(s.binding.ref.key)
 
   const cell = open ? page.slots.find((s) => s.name === open && s.kind === 'cell') : undefined
   const freshCls = glow ? 'ov fresh glow' : 'ov fresh'
@@ -40,17 +44,19 @@ function FormPageInner({ page, state, touch, disabled, batchLabel, dim, glow }: 
     const m = marks.get(s.name)
     const pad = s.kind === 'check' ? (touch ? 1.2 : 1.0) : 0.2
     const box = pos(s.x, s.y, s.w, s.h)
+    const incomplete = isIncomplete(s)
     return (
       <span key={s.name}>
         {m === 'cm' && <span className="chg" style={box} />}
         {m === 'ai' && on && <span className={freshCls} style={box} />}
         {!m && !(m === 'ai' && on) && <span className="able" style={box} />}
         {m === 'ai' && !on && <span className="able" style={box} />}
+        {incomplete && <span className="ov incomplete" style={box} aria-hidden="true" />}
         {on && s.kind === 'circle' && <span className="ring" style={box} />}
         {on && s.kind === 'check' && <span className="mark" style={{ ...box, fontSize: '2.1cqw' }}>✓</span>}
         <button
           className="hit" type="button" disabled={disabled}
-          aria-label={`${s.label}${s.kind === 'circle' ? 'に丸を付ける' : 'に ✓ を付ける'}`} aria-pressed={on}
+          aria-label={`${s.label}${incomplete ? '（AI未反映）' : ''}${s.kind === 'circle' ? 'に丸を付ける' : 'に ✓ を付ける'}`} aria-pressed={on} aria-invalid={incomplete}
           onClick={() => edit(s.name, s.kind === 'circle' ? (on ? 'false' : 'true') : (on ? '' : '✓'))}
           style={pos(s.x - pad, s.y - 0.2, s.w + pad * 2, s.h + 0.4)}
         />
@@ -62,15 +68,17 @@ function FormPageInner({ page, state, touch, disabled, batchLabel, dim, glow }: 
     const v = display(s.name)
     const box = pos(s.x + 0.15, s.y + 0.15, Math.max(0.5, s.w - 0.3), Math.max(0.5, s.h - 0.3))
     const multi = (s.cellOptions?.length ?? 0) > 1
+    const incomplete = isIncomplete(s)
     const isOpen = open === s.name
     return (
       <span key={s.name}>
         {v && marks.get(s.name) === 'cm' && <span className="chg" style={box} />}
         {v && marks.get(s.name) === 'ai' && <span className={freshCls} style={box} />}
         {v && <span className="mark" style={{ ...box, fontSize: '2.3cqw' }}>{v}</span>}
+        {incomplete && <span className="ov incomplete" style={box} aria-hidden="true" />}
         <button
           className={`hit${isOpen ? ' cell-open' : ''}`} type="button" disabled={disabled}
-          aria-label={`${s.label}${multi ? '（印を選ぶ）' : '（押して ○ を付け外し）'}`} aria-haspopup={multi}
+          aria-label={`${s.label}${incomplete ? '（AI未反映）' : ''}${multi ? '（印を選ぶ）' : '（押して ○ を付け外し）'}`} aria-haspopup={multi} aria-invalid={incomplete}
           onClick={() => (multi ? setOpen(isOpen ? '' : s.name) : edit(s.name, v ? '' : s.cellOptions![0].text))}
           style={box}
         />
@@ -80,11 +88,12 @@ function FormPageInner({ page, state, touch, disabled, batchLabel, dim, glow }: 
 
   const renderText = (s: SlotView) => {
     const m = marks.get(s.name)
+    const incomplete = isIncomplete(s)
     const multi = s.kind === 'area'
     const d = multi ? state.diffOf(s) : null
     if (d) {
       return (
-        <div key={s.name} style={{ position: 'absolute', ...pos(s.x, s.y, s.w, s.h), zIndex: diffOpen === s.name ? 8 : 3 }}>
+        <div key={s.name} style={{ position: 'absolute', ...pos(s.x, s.y, s.w, s.h), zIndex: diffOpen === s.name ? 8 : 3, ...(incomplete ? { outline: '2px solid #C62828', outlineOffset: '-1px', backgroundColor: 'rgba(198,40,40,0.10)' } : {}) }}>
           <DiffField
             before={d.before} after={d.after} ai={d.ai} label={s.label} batch={batchLabel}
             fontSize={fsz(s.pt)} lineHeight={s.lh} padding="0.4cqw 0.3cqw 0" fill touch={touch} disabled={disabled}
@@ -102,14 +111,15 @@ function FormPageInner({ page, state, touch, disabled, batchLabel, dim, glow }: 
       lineHeight: multi ? s.lh : 1.15,
       textAlign: s.align,
       ...(m === 'cm' ? YELLOW : m === 'ai' ? ORANGE : BLUE),
+      ...(incomplete ? { outline: '2px solid #C62828', outlineOffset: '-1px', backgroundColor: 'rgba(198,40,40,0.10)' } : {}),
     }
     const value = display(s.name)
     const reason = state.reasons.get(s.name)
     const field = multi
-      ? <FitTextarea key={s.name} label={s.label} value={value} disabled={disabled} onChange={(t) => state.type(s.name, t)} onBlur={() => state.commit(s.name)} style={style} base={fsz(s.pt)} />
+      ? <FitTextarea key={s.name} label={`${s.label}${incomplete ? '（AI未反映）' : ''}`} value={value} disabled={disabled} onChange={(t) => state.type(s.name, t)} onBlur={() => state.commit(s.name)} style={style} base={fsz(s.pt)} incomplete={incomplete} />
       : (
         <input
-          key={s.name} className="fx" type="text" aria-label={s.label} aria-invalid={!!reason} value={value} disabled={disabled}
+          key={s.name} className={`fx${incomplete ? ' fx-incomplete' : ''}`} type="text" aria-label={`${s.label}${incomplete ? '（AI未反映）' : ''}`} aria-invalid={!!reason || incomplete} value={value} disabled={disabled}
           onChange={(e) => state.type(s.name, e.target.value)}
           onBlur={() => state.commit(s.name)}
           // 変換中の Enter は確定に使わない
@@ -162,10 +172,10 @@ function FormPageInner({ page, state, touch, disabled, batchLabel, dim, glow }: 
 }
 
 /** 長い文章の欄（入りきらなければ文字を小さくする） */
-function FitTextarea({ label, value, disabled, onChange, onBlur, style, base }: { label: string, value: string, disabled: boolean, onChange: (t: string) => void, onBlur: () => void, style: CSSProperties, base: string }) {
+function FitTextarea({ label, value, disabled, onChange, onBlur, style, base, incomplete }: { label: string, value: string, disabled: boolean, onChange: (t: string) => void, onBlur: () => void, style: CSSProperties, base: string, incomplete: boolean }) {
   const ref = useRef<HTMLTextAreaElement>(null)
   const s = useFitScale(ref, base, value)
-  return <textarea ref={ref} className="fx fxa" aria-label={label} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} onBlur={onBlur} style={{ ...style, fontSize: scaled(base, s) }} />
+  return <textarea ref={ref} className={`fx fxa${incomplete ? ' fx-incomplete' : ''}`} aria-label={label} aria-invalid={incomplete} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} onBlur={onBlur} style={{ ...style, fontSize: scaled(base, s) }} />
 }
 
 export const FormPage = memo(FormPageInner)

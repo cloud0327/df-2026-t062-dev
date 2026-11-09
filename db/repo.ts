@@ -532,8 +532,7 @@ export interface JobView {
   createdAt: string
   updatedAt: string
   batch: { changes: number, kept: number } | null
-  failedGroups: string[]
-  droppedValues: number
+  incompleteFields: string[]
   errorKind: string | null
 }
 
@@ -541,7 +540,7 @@ export interface JobView {
 export async function activeJobs(db: Q, officeId: string, clientId: string): Promise<JobView[]> {
   const r = await db.query(
     `SELECT j.id, j.status, j.step, j.eta_seconds, j.created_at, j.updated_at, j.error_kind,
-            j.steps #> '{write,failed}' AS failed_groups, j.steps #>> '{write,dropped}' AS dropped_values,
+            j.steps #> '{write,incompleteFields}' AS incomplete_fields,
             jsonb_array_length(b.changes) AS n, jsonb_array_length(b.kept) AS k
      FROM jobs j LEFT JOIN batches b ON b.id = j.batch_id
      WHERE j.office_id = $1 AND j.client_id = $2
@@ -558,8 +557,13 @@ export async function activeJobs(db: Q, officeId: string, clientId: string): Pro
     createdAt: new Date(j.created_at).toISOString(),
     updatedAt: new Date(j.updated_at).toISOString(),
     batch: j.n === null ? null : { changes: Number(j.n), kept: Number(j.k) },
-    failedGroups: Array.isArray(j.failed_groups) ? j.failed_groups.filter((x: unknown): x is string => typeof x === 'string') : [],
-    droppedValues: Number(j.dropped_values ?? 0),
+    incompleteFields: stringValues(j.incomplete_fields),
     errorKind: j.error_kind ?? null,
   }))
+}
+
+function stringValues(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  const strings: string[] = value.filter((item): item is string => typeof item === 'string')
+  return [...new Set(strings)]
 }
