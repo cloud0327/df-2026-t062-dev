@@ -14,7 +14,7 @@
 最初に 1 回だけ:
 
 ```sh
-cd design/pdfme
+cd forms
 pnpm install
 ```
 

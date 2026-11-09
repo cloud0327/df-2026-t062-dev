@@ -1,0 +1,169 @@
+{
+ "about": "正解のシート（3 層目）の叩き台。2026-11-08 に Claude が作成。決まり: 話に出たこと（根拠の発言があること）は書く、出ていないことは書かない。推測で埋めない（「空でもよい」は使わない）。ここに書いていない欄は、空のままが正しい。値が 2 つ考えられるときだけ anyOf に並べる。note に「要確認」とあるものは、ケアマネの経験がある人に見てもらいたい。書き方は eval/bench/README.md",
+ "entries": [
+  {"key": "intake.date", "expect": "2021-01-20", "from": ["s0-005"]},
+  {"key": "intake.method", "expect": "電話", "from": ["s0-005"]},
+  {"key": "intake.referralRoute", "points": [
+    {"text": "長男の嫁からの相談", "from": ["s0-005"]},
+    {"text": "地域包括支援センターや病院の医療相談員を経て、この事業所に相談した", "from": ["s0-003", "s0-004"]}]},
+
+  {"key": "person.name", "points": [{"text": "甲斐", "from": ["s1-001"]}], "note": "姓だけ。名は話に出ていない"},
+  {"key": "person.sex", "expect": "男", "from": ["s2-009", "s2-069"], "note": "嫁が「お父さん」と呼んでいる"},
+  {"key": "person.lifeHistory", "points": [
+    {"text": "令和2年11月に倒れるまでは、仕事も家事も自分でしていた", "from": ["s0-001", "s2-041", "s2-029"]},
+    {"text": "仕事で得意先と進んでやり取りしていた", "from": ["s2-055"]},
+    {"text": "話好きで、付き合いで無尽を何本かやっていた", "from": ["s2-055"]}]},
+
+  {"key": "consulter", "sub": "relationship", "expect": "子の配偶者", "from": ["s0-005"]},
+  {"key": "consulter", "sub": "sex", "expect": "女", "from": ["s0-005"], "note": "長男の嫁"},
+  {"key": "consulter", "sub": "name", "expect": "春子", "from": ["s0-005"], "note": "嫁の名前は会話の中では出てこず、原本の話者名から分かる。本物の面談では、同席者の名前はケアマネが登録する想定"},
+
+  {"key": "complaint.person", "points": [
+    {"text": "もっとしっかり歩けるようになりたい（長い距離は転びそうで不安）", "from": ["s2-023", "s2-021", "s2-065"]},
+    {"text": "ちゃんと話ができるようになりたい", "from": ["s2-054"]},
+    {"text": "しっかり健康管理をして健康でいたい", "from": ["s2-041"]},
+    {"text": "できる限りのことは自分でやっていきたい", "from": ["s2-063"]},
+    {"text": "退院後もリハビリを続けたい", "from": ["s2-019"]}]},
+  {"key": "complaint.family", "points": [
+    {"text": "（嫁）転びそうで心配。家のお風呂に入れるようになってほしい", "from": ["s2-022"]},
+    {"text": "（嫁）できないところは手伝うが、自分でできることはなるべく本人にしてほしい", "from": ["s2-029"]},
+    {"text": "（嫁）また無尽に行けるようになってほしい", "from": ["s2-055"]},
+    {"text": "（嫁）また仕事で得意先とやり取りしてほしい", "from": ["s2-069"]},
+    {"text": "（長男）前と同じようにはいかなくても元気でいてほしい", "from": ["s2-043"]},
+    {"text": "（長男）仕事もあって不安だが、本人も家族も無理なくやっていきたい", "from": ["s2-062"]}]},
+  {"key": "desiredSupports", "items": [
+    {"match": {"content": "リハビリの継続"}, "from": ["s2-019", "s2-020"]},
+    {"match": {"content": "入浴の介助"}, "from": ["s2-022", "s2-046"], "note": "要確認。「今後必要になると思われる支援」はケアマネの判断も入る"}]},
+
+  {"key": "cert.status", "expect": "認定済", "from": ["s0-004"]},
+
+  {"key": "family.members", "items": [
+    {"match": {"relationship": "子", "relationshipDetail": "長男"}, "from": ["s2-059", "s2-061"], "subs": {
+      "name": {"expect": "雅史", "from": ["s2-070"]},
+      "sex": {"expect": "男"},
+      "livingTogether": {"expect": "同居", "from": ["s2-059"]},
+      "employment": {"points": [{"text": "仕事がある", "from": ["s2-061", "s2-062"]}]},
+      "isMainCaregiver": {"expect": false, "from": ["s2-061"]}}},
+    {"match": {"relationship": "子の配偶者"}, "from": ["s2-059", "s2-061"], "subs": {
+      "name": {"expect": "春子", "from": ["s0-005"]},
+      "relationshipDetail": {"points": [{"text": "長男の嫁", "from": ["s0-005"]}]},
+      "sex": {"expect": "女"},
+      "livingTogether": {"expect": "同居", "from": ["s2-059"]},
+      "isMainCaregiver": {"expect": true, "from": ["s2-061"]}}},
+    {"match": {"relationship": "子", "relationshipDetail": "娘"}, "from": ["s2-036"], "subs": {
+      "sex": {"expect": "女"}}},
+    {"match": {"relationship": "孫"}, "from": ["s2-036"]}]},
+  {"key": "family.careSituation", "points": [
+    {"text": "退院後は長男夫婦と同居する（お互い納得している）", "from": ["s2-059"]},
+    {"text": "長男は仕事があるため、介護はほとんど嫁が担う（食事・入浴・着替え、必要ならトイレ）", "from": ["s2-061"]},
+    {"text": "嫁は、介護は全然苦ではないと言う", "from": ["s2-061"]},
+    {"text": "薬の管理も嫁がする", "from": ["s2-052"]}]},
+
+  {"key": "services.recentFacility", "sub": "name", "points": [{"text": "Cリハビリテーション病院", "from": ["s0-002"]}]},
+
+  {"key": "housing.bedding", "expect": "ベッド", "from": ["s3-002"]},
+  {"key": "housing.toiletStep", "expect": false, "from": ["s2-022"], "note": "要確認。家の中はバリアフリーに改築済み"},
+  {"key": "housing.bathAtHome", "expect": true, "from": ["s2-045"]},
+  {"key": "housing.bathStep", "expect": false, "from": ["s2-022"], "note": "要確認。家の中はバリアフリーに改築済み"},
+  {"key": "housing.mobilityAidsIndoor", "expect": ["杖"], "from": ["s3-001"], "note": "自宅の中は伝い歩きと4点杖。1 回目の時点では自宅のことは分からない（病棟での車いすは自宅の欄には入れない）"},
+  {"key": "housing.notes", "points": [
+    {"text": "家の中はバリアフリーに改築してある", "from": ["s2-022"]},
+    {"text": "カーペット・絨毯・座布団などのちょっとした段差に注意が要る（OT）", "from": ["s2-025"]},
+    {"text": "手すりや段差解消などの住宅改修は必要ない", "from": ["s3-004"]}]},
+
+  {"key": "health.history", "points": [
+    {"text": "令和2年11月18日、塞栓性脳梗塞（自宅で倒れて救急搬送、B病院に入院）", "from": ["s0-001"]},
+    {"text": "令和2年12月3日、リハビリ目的でCリハビリテーション病院に転院", "from": ["s0-002"]},
+    {"text": "高血圧（降圧薬を内服。血圧は130〜140/80〜90で安定）", "from": ["s2-006"]},
+    {"text": "平成15年、下肢静脈血栓症（ワーファリンを服用）", "from": ["s2-008"]},
+    {"text": "左上下肢の軽度の麻痺", "from": ["s2-018"]},
+    {"text": "左空間無視", "from": ["s2-018"]}]},
+  {"key": "health.visits", "items": [
+    {"match": {"disease": "高血圧"}, "from": ["s2-006"], "subs": {"medication": {"expect": true}}},
+    {"match": {"disease": "下肢静脈血栓症"}, "from": ["s2-008"], "subs": {
+      "medication": {"expect": true},
+      "onset": {"points": [{"text": "平成15年"}]}}},
+    {"match": {"disease": "塞栓性脳梗塞"}, "from": ["s0-001"], "subs": {
+      "onset": {"points": [{"text": "令和2年11月18日"}]}}}]},
+  {"key": "health.notes", "points": [
+    {"text": "体幹の筋力が戻ればバランスも良くなる見込み（PT）", "from": ["s2-018"]},
+    {"text": "言葉は転院当初よりかなり良くなっている（ST）", "from": ["s2-031"]}]},
+  {"key": "health.lifeNotes", "points": [
+    {"text": "医師から、内服管理・塩分制限・リハビリなどの病状管理をしっかり行うよう言われている", "from": ["s2-008"]},
+    {"text": "ワーファリンを服用しているため、出血に注意", "from": ["s2-008"]},
+    {"text": "十分な水分をとり、生活習慣病を予防する", "from": ["s2-008"]}]},
+
+  {"key": "survey.1_1", "expect": ["左上肢", "左下肢"], "from": ["s2-018"]},
+  {"key": "survey.1_2", "expect": ["ない"], "from": ["s2-018", "s2-025"], "note": "要確認。麻痺のある左腕・左足・左手指に拘縮はない。右側は話に出ていない"},
+  {"key": "survey.1_7", "expect": "何かにつかまればできる", "from": ["s2-025", "s3-001"]},
+  {"key": "notes.basicMovement", "points": [
+    {"text": "麻痺のある左上下肢に拘縮はない", "from": ["s2-018"]},
+    {"text": "腕の重さを肩で支えるため首から肩に張りがあり、バランスを崩しやすい", "from": ["s2-018"]},
+    {"text": "病棟内は車いすを自分で操作して移動している", "from": ["s2-011"]},
+    {"text": "歩くときは手すりや4点杖など固定されたものにつかまると安全。疲れるとすり足になる", "from": ["s2-025"]},
+    {"text": "左手は物を握れないが、皿や紙を押さえることはできる", "from": ["s2-025", "s2-027"]},
+    {"text": "自宅では、居室〜台所〜トイレ〜居間の動線を、伝い歩きや4点杖で歩ける", "from": ["s3-001"]},
+    {"text": "自宅のベッドで寝起きでき、大変なら置き型手すりを置く", "from": ["s3-002"]}]},
+
+  {"key": "assist.bathTransferLevel", "sub": "current", "expect": "介助あり", "from": ["s2-046"]},
+  {"key": "notes.bath", "points": [
+    {"text": "病院ではシャワーチェアを使って介助浴をしており、浴槽の跨ぎ越しに介助が要る", "from": ["s2-046"]},
+    {"text": "自宅の浴室は普通のユニットバスで、洗い場が手狭", "from": ["s2-045"]},
+    {"text": "嫁が手伝うつもりだが、一緒に入るのは大変だと感じている", "from": ["s2-022", "s2-045"]},
+    {"text": "浴室にシャワーチェアを置けば、介助や見守りのもとで安全に入浴できる", "from": ["s3-003"]}]},
+
+  {"key": "communication.speechDisorder", "sub": "has", "expect": true, "from": ["s2-031"]},
+  {"key": "communication.speechDisorder", "sub": "detail", "points": [{"text": "ろれつが回りにくく、言葉が出にくい", "from": ["s2-031"]}]},
+  {"key": "notes.communication", "points": [
+    {"text": "ゆっくり話し、聞き手が配慮すれば、日常の意思疎通は問題ない", "from": ["s2-031"]},
+    {"text": "うまく話せないとイライラするが、一息入れるとスムーズに言葉が出ることがある", "from": ["s2-031", "s2-054"]},
+    {"text": "言語訓練より、いろいろな人と話す機会を多く持つ方が効果的。すぐに外に出るのは難しいので、まず家族（息子夫婦、娘や孫）とたくさん話すとよい（ST）", "from": ["s2-036"]}]},
+
+  {"key": "survey.2_2", "anyOf": ["介助されていない", "見守り等"], "from": ["s2-011"], "note": "要確認。病棟内は車いすを自分で操作。トイレへの移動は見守りあり"},
+  {"key": "survey.2_3", "expect": "できる", "from": ["s2-031"]},
+  {"key": "survey.2_4", "anyOf": ["介助されていない", "見守り等"], "from": ["s2-013"], "note": "要確認。配膳すれば自分で食べる。右側に寄せて配膳する工夫がある"},
+  {"key": "survey.2_5", "expect": "見守り等", "from": ["s2-011"]},
+  {"key": "survey.2_6", "expect": "見守り等", "from": ["s2-011"]},
+  {"key": "survey.2_7", "expect": "介助されていない", "from": ["s2-031"]},
+  {"key": "meal.staple", "sub": "current", "expect": "普通食", "from": ["s2-038"]},
+  {"key": "meal.side", "sub": "current", "expect": "普通食", "from": ["s2-038"]},
+  {"key": "meal.chewing", "expect": "問題なし", "from": ["s2-031"]},
+  {"key": "meal.diet", "sub": "kinds", "anyOf": [["高血圧食"], ["一般食", "高血圧食"]], "from": ["s2-006"], "note": "常食で1日6gの塩分制限"},
+  {"key": "meal.diet", "sub": "saltGrams", "expect": 6, "from": ["s2-006", "s2-013"]},
+  {"key": "notes.meal", "points": [
+    {"text": "配膳すれば自分で食べ、毎食ほぼ全量食べている", "from": ["s2-013"]},
+    {"text": "左側が見えにくく残すことがあるので、右側に寄せて配膳している", "from": ["s2-013"]},
+    {"text": "茶碗は持てないが、左手で皿を押さえて箸かスプーンで食べる", "from": ["s2-048"]},
+    {"text": "むせは改善したがたまにある。むせても上手に吐き出せる（本人は気にしていない）", "from": ["s2-013", "s2-034", "s2-048"]},
+    {"text": "常食・米飯。硬いもの・大きいものは一口大に切ってよいが、細かく刻みすぎると誤嚥しやすい", "from": ["s2-038"]},
+    {"text": "1日6gの塩分制限。本人は味が薄くて物足りない、味噌汁を飲みたいと言う", "from": ["s2-006", "s2-007"]},
+    {"text": "退院後は嫁が3食作り、塩分を管理する", "from": ["s2-052", "s2-015"]}]},
+  {"key": "excretion.urination", "sub": "currentLevel", "expect": "見守りのみ", "from": ["s2-011"]},
+  {"key": "excretion.urination", "sub": "currentMethods", "expect": ["トイレ"], "from": ["s2-011"]},
+  {"key": "excretion.defecation", "sub": "currentLevel", "expect": "見守りのみ", "from": ["s2-011"]},
+  {"key": "excretion.defecation", "sub": "currentMethods", "expect": ["トイレ"], "from": ["s2-011"]},
+  {"key": "notes.excretion", "points": [
+    {"text": "トイレには自分で行くが、転倒予防のためナースコールで見守りを受けている。夜間はセンサーマット", "from": ["s2-011"]},
+    {"text": "排尿は日中5〜6回、夜間1〜2回で、失禁はない", "from": ["s2-013"]},
+    {"text": "排便は1〜2日に1回で、下剤は使っていない", "from": ["s2-013"]},
+    {"text": "本人は、トイレに自分で行くのは当たり前と思っている", "from": ["s2-012"]}]},
+
+  {"key": "survey.3_1", "expect": "調査対象者が意思を他者に伝達できる", "from": ["s2-031", "s2-053"]},
+  {"key": "survey.4_3", "expect": "ときどきある", "from": ["s2-031", "s2-054"], "note": "要確認。話が通じないときにイライラすることがある"},
+  {"key": "cognition.observation", "points": [
+    {"text": "前の病院では夜間せん妄のような症状があったが一時的で、今は全くない", "from": ["s2-013"]}]},
+
+  {"key": "social.family", "sub": "has", "expect": true, "from": ["s2-036", "s2-059"]},
+  {"key": "notes.socialLife", "points": [
+    {"text": "今は人にあまり会いたくない様子で、本人は「もう俺の出る幕はない」と言う", "from": ["s2-055", "s2-056"]},
+    {"text": "家事は嫁に任せる", "from": ["s2-067"]},
+    {"text": "仕事は長男がいれば大丈夫で、自分はもういいと言う", "from": ["s2-070"]}]},
+
+  {"key": "medical.careDetails", "items": [
+    {"match": {"item": "内服薬"}, "from": ["s2-006", "s2-008"], "subs": {"current": {"expect": true}}}]},
+
+  {"key": "summary.overall", "points": [
+    {"text": "当面は「しっかり歩くこと」「スムーズに話せること」「病気の再発を防ぐこと」を中心に取り組む（本人も同意）", "from": ["s2-072", "s2-073"]},
+    {"text": "退院後は長男夫婦と同居し、主に嫁が介護を担う", "from": ["s2-059", "s2-061"]}]}
+ ]
+}

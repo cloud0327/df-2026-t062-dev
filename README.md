@@ -1,63 +1,120 @@
-# DevFest Hackathon 2026 チーム062
+# DevFest Hackathon 2026 チーム062 — ケア書類アシスタント（仮）
 
-CI/CDを確認するためのWebアプリです。ローカルではNode.js API、公開サイトでは模擬応答のJSONを使います。
+介護支援専門員（ケアマネ）向けの AI 業務エージェントです。面談を録音すると、AI がアセスメント用紙に書き込みます。ケアマネは用紙の上で違うところだけを直し、保存します。一度集めた情報は、入院時情報提供書など別の書類にも使い回します。
 
 [デモサイトを開く](https://df-2026-t062-demo-327.web.app)
 
-## ローカル開発
+## できること
 
-Node.jsは `.nvmrc` のバージョンを使います。初回に `npm ci` を実行します。
+| 端末 | 画面 | できること |
+|---|---|---|
+| PC | 利用者一覧 | 担当の利用者、要介護度、アセスメントの必須欄の入力数。利用者を追加する |
+| PC | 作業画面 | 全社協のアセスメント用紙（11 ページ）と入院時情報提供書を、用紙の上で直接直す（文字・丸・✓・援助の表の ○△）。AI が書いたところは橙、直したところは黄、AI が書き換えた文は緑の下線（押すと前の文と比べ、1 か所ずつ保存・前の文に戻す）。保存は「1 か所」「このページ」「書類」の 3 段。保存した版から PDF を出す |
+| iPad（縦） | 利用者・用紙 | 録音する／止める。止めると、録音を送り、文字起こし → AI が用紙に書く。その間も用紙は書ける（AI が書き込む数秒だけ止まる）。自分が先に書いたところは、AI が上書きしない |
 
-```sh
-npm run dev:api  # ターミナル1
-npm run dev      # ターミナル2
+画面の見た目は、デザインのキャンバス（PC ①〜④、iPad ①〜③、録音の流れ A〜E、差分のふきだし、作業のお手伝い）に合わせています。作業のお手伝い（右下の猫）のメニューの動きは、まだ決めていないのでモックです。
+
+## 仕組み
+
+```
+PC・iPad（React）── Firebase Hosting
+   │  ID トークン（Identity Platform）
+   ▼
+Cloud Run api（Hono）── Cloud SQL（PostgreSQL）
+   │ 録音の送り先 URL            ▲ applyBatch（用紙を変える入口は 1 つ）
+   ▼                             │
+Cloud Storage ◀── iPad が直接送る（再開できる送信）
+   │
+Cloud Tasks ──▶ Cloud Run worker：文字起こし（Speech-to-Text Chirp 3）→ 話した人 → 2 層改（Gemini）→ 型の確かめ → applyBatch
+Cloud Scheduler（5 分ごと）──▶ worker の見回り
 ```
 
-Viteが表示するURLを開くと「実API」と表示されます。`npm run build` の後に `npm run preview` を実行すると、公開版と同じ「模擬応答」を確認できます。
+| フォルダ | 中身 |
+|---|---|
+| `src/` | 画面（React）。`pages/` が画面、`form/` が用紙の部品（ページの描画・値の持ち方・録音） |
+| `api/` | api（Hono）。ログインの確かめ、置き場（Cloud Storage／ローカル）、ジョブの積み方（Cloud Tasks／同じプロセス）、PDF |
+| `worker/` | 録音 1 本の処理。`vertex/` が本物の AI（STT・Gemini・2 層改）、`fake.ts` が費用のかからない見せかけ |
+| `core/` | 画面・api・worker で共通のもの。`fields.json`（欄の一覧の本体）、型の確かめ、印字欄と欄の値の変換、文ごとの差分、書き換えの決まり |
+| `forms/` | pdfme の様式（アセスメント・入院時情報提供書）。`templates/<様式>/slotmap.json` が「印字欄 → 欄の値」の対応表 |
+| `db/` | PostgreSQL の移行、読み書き（`repo.ts`）、見本のデータ |
+| `eval/` | 演習シナリオ（公開）と採点（bench）。`run-writer.ts` で 2 層改をシナリオに通す |
+| `docs/` | 設計書（[DB 設計](docs/DB設計.md)、[API 設計](docs/API設計.md)、[AI 基盤の設計](docs/AI基盤の設計.md)、[データの定義](docs/データの定義.md)、[欄の一覧](docs/欄の一覧.md)） |
+| `infra/` | Terraform（Google Cloud） |
+
+## ローカルで動かす
+
+Node.js は `.nvmrc` の版を使います。最初に `npm ci` を実行します。
+
+```sh
+docker compose up -d                       # PostgreSQL（localhost:54329）
+export DATABASE_URL=postgres://postgres:postgres@localhost:54329/careman
+npm run db:migrate                         # 表を作る
+npm run db:seed                            # 見本のデータ（架空の人と、公開の演習シナリオ）
+
+AUTH_MODE=dev npm run dev:api              # ターミナル 1: api（http://127.0.0.1:8787）
+npm run dev                                # ターミナル 2: 画面（Vite）
+```
+
+- 画面を開くとログイン画面になります。ローカルでは、メールアドレス `kato@example.com` だけで入れます（`AUTH_MODE=dev` のときだけ）。
+- iPad の画面を PC で見るときは、URL に `?ui=pad` を付けます（`?ui=pc` で戻る）。
+- ローカルでは、録音の置き場は `.data/storage`、ジョブは api と同じプロセスで動きます。AI は既定で `AI_PROVIDER=fake`（演習シナリオの正解を返す。費用なし）です。
+
+### 見本のデータ
+
+| 利用者 | 状態 |
+|---|---|
+| 甲斐さん | 演習シナリオの 1 回目の面談のあと。AI が書いた値（橙）が未保存のまま入っている |
+| 佐藤 一郎さん | 何も入っていない新しい利用者 |
+| 山田 花子さん・田中 和子さん | 架空の見本データ（保存済み） |
+
+### 本物の AI で動かす（費用がかかる）
+
+```sh
+gcloud auth application-default login
+GOOGLE_CLOUD_PROJECT=<プロジェクト> AI_PROVIDER=vertex npm run dev:api
+```
+
+演習シナリオだけで 2 層改を試すときは `node eval/run-writer.ts --out <フォルダ>` を使い、`python3 eval/bench/bench.py score --gold eval/scenario/gold --submission <フォルダ>` で採点します。**実在の方の録音は、Google Cloud の外のサービスに送らないでください。**
+
+## 確かめる
 
 ```sh
 npm run typecheck
-npm test
+npm run forms:check        # 様式と fields.json の食い違い、slotmap.json が最新か
+npm test                   # DATABASE_URL があれば DB を使うテストも走る
+python3 -m unittest discover -s eval/bench
 npm run build
 ```
 
-## Docker API（Google Cloud接続前の検証）
+`slotmap.json` は、様式（`template.json`・ページのファイル）を直したら `npm run forms:slotmap` で作り直します。
 
-Google Cloudの請求先と認証設定が決まるまでは、Cloud Runへの公開を保留します。
-その間もAPIのコンテナ化とCIの動作確認は進められます。今のFirebase Hostingでは引き続き模擬応答を配信します。
+## 環境変数
 
-Dockerが利用できる環境では、次のコマンドでAPIコンテナを確認できます。
-
-```sh
-docker build -t t062-api:local .
-docker run --rm -e PORT=8080 -p 127.0.0.1:8787:8080 t062-api:local
-# 別ターミナルから
-curl http://127.0.0.1:8787/api/health.json
-# {"status":"ok","source":"api"}
-```
-
-PRでもGitHub Actionsの`Verify`がDockerイメージをビルドして同じAPI応答を検証します。
-Google Cloudへの認証・Artifact Registryへのpush・Cloud Runデプロイは実行しません。
-
-請求先確定後のTerraform適用、承認付きCloud Runリリース、切り戻し手順は [Google Cloudの初期構築](infra/gcp/README.md) を参照してください。
+| 変数 | 使うところ | 値 |
+|---|---|---|
+| `DATABASE_URL` | api・worker（ローカル・CI） | PostgreSQL の接続文字列 |
+| `CLOUD_SQL_INSTANCE`・`DB_USER`・`DB_NAME` | api・worker（Cloud Run） | Cloud SQL のインスタンス名と IAM のユーザー（パスワードは持たない） |
+| `AUTH_MODE` | api | `firebase`（既定）／`dev`（ローカルだけ） |
+| `FIREBASE_PROJECT_ID` | api | ID トークンを確かめるプロジェクト |
+| `STORAGE_MODE`・`GCS_SOURCE_BUCKET`・`GCS_OUTPUT_BUCKET`・`GCS_WORK_BUCKET` | api・worker | `gcs` で Cloud Storage。既定はローカル |
+| `QUEUE_MODE`・`TASKS_QUEUE`・`WORKER_URL`・`TASKS_INVOKER_SA` | api | `tasks` で Cloud Tasks。既定は同じプロセス |
+| `AI_PROVIDER`・`GOOGLE_CLOUD_PROJECT`・`GEMINI_MODEL`・`GEMINI_LOCATION`・`STT_LOCATION` | worker | `vertex` で本物の AI。既定は `fake` |
 
 ## CI/CD
 
-PRと `main` で型チェック、APIテスト、ビルドを実行します。公開ジョブは検証済みの `dist/` を使い、公開先の画面・模擬応答・コミットSHAを確認します。接続後はGitHubの `hosting-live` Environmentに公開URLが表示されます。
-
-### 初回接続
-
-1. Firebase Sparkプロジェクトを作り、デフォルトのHostingサイトを作成します。
-2. Firebaseプロジェクトにデプロイ専用サービスアカウントを作り、`roles/firebasehosting.admin` と `roles/serviceusage.apiKeysViewer` を付与します。
-3. GitHubの `hosting-live` Environmentを作り、デプロイできるブランチを `main` に限定します。同じEnvironmentに変数 `FIREBASE_PROJECT_ID` と `FIREBASE_HOSTING_URL`（末尾スラッシュなしの `https://<site-id>.web.app`）、Secret `FIREBASE_SERVICE_ACCOUNT`（JSON鍵）を登録します。鍵はGitHub Secretに直接渡し、作業用の鍵ファイルを削除します。
-4. `Verify` が初回に完了したら、`main` にPRと `Verify` の成功を要求する保護を設定します。リポジトリ変数 `HOSTING_ENABLED=true` を設定し、PRのマージまたは `main` の `CI/CD` の手動実行で初回公開を確認します。
+PR と `main` で、型チェック、様式の確かめ、テスト（PostgreSQL を使うものも）、ビルド、公開版の確かめ、Docker イメージの確かめを行います。公開ジョブは検証済みの `dist/` を Firebase Hosting に出します。api と worker は同じイメージで、Cloud Run への公開は手動の workflow（`cloud-run.yml`、承認つき）です。Google Cloud の構成と初回の準備（Terraform の適用、Cloud SQL の `app` ロール、移行）は [infra/gcp/README.md](infra/gcp/README.md) を見てください。
 
 ### 切り戻し
 
-Firebase Consoleの **Hosting → リリース履歴** で、動作確認済みのリリースを選んでロールバックします。公開URLの `/version.json` が意図したSHAに戻ったことを確認します。原因を修正するPRを `main` にマージすると自動公開が再開します。
+- Hosting: Firebase Console の **Hosting → リリース履歴** で、動作確認済みのリリースに戻します。`/version.json` の SHA で確かめます。
+- Cloud Run: `cloud-run.yml` の手順（前のリビジョンにトラフィックを戻す）。DB の移行は足すだけにしているので、戻しても壊れません。
 
-## 実APIの実機検証と最終提出
+## 個人情報の扱い
 
-スマホから実APIを呼ぶ段階で、Blazeに移行します。APIをDockerでビルドし、Artifact RegistryのイメージをCloud Run（`asia-northeast1`、リクエスト課金、最小インスタンス0）で起動します。Cloud Runでは `HOST=0.0.0.0` とサービスの `PORT` を使用します。静的な `public/api/health.json` を取り除き、Firebase Hostingのrewriteで同じパスを転送します。その切り替えに合わせ、公開後の確認も実APIの応答を期待するよう更新します。
+- このリポジトリは公開です。入っているのは、公開の演習シナリオ（山梨県介護支援専門員協会の演習用 PDF を写したもの）と、架空の見本データだけです。
+- 録音・文字起こし・用紙の値は、Google Cloud の東京リージョン（Cloud SQL・Cloud Storage）に置きます。ログには中身を出しません（ジョブの id・段・時間・誤りの種類・使った量だけ）。
+- 誰が、いつ、直した・保存した・PDF を出したかを `audit_events` に残します。
 
-作品が完成したら、公開確認済みのコミットからソース、資料、再現用の設定を取り出します。公開URLと開発元のSHAを添えて、[運営の提出用リポジトリ](https://github.com/Devfest-Hackathon-2026/df-2026-t062)に提出用PRを作ります。提出物に秘密情報や開発履歴が含まれていないことを確認します。
+## 最終提出
+
+作品が完成したら、公開確認済みのコミットからソース、資料、再現用の設定を取り出します。公開 URL と開発元の SHA を添えて、[運営の提出用リポジトリ](https://github.com/Devfest-Hackathon-2026/df-2026-t062)に提出用 PR を作ります。提出物に秘密情報や開発履歴が含まれていないことを確認します。
