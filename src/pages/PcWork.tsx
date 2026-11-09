@@ -7,7 +7,7 @@ import { useDocument } from '../form/useDocument.ts'
 import { api } from '../lib/api.ts'
 import { linkProps } from '../lib/router.tsx'
 import { PetHelper } from '../components/PetHelper.tsx'
-import { PcHeader, countText, downloadBlob } from '../components/Chrome.tsx'
+import {countText, downloadBlob } from '../components/Chrome.tsx'
 
 export function PcWork({ clientId, staffName }: { clientId: string, staffName: string }) {
   const [tab, setTab] = useState<'assessment' | 'admission'>('assessment')
@@ -83,7 +83,6 @@ export function PcWork({ clientId, staffName }: { clientId: string, staffName: s
 
   return (
     <div className="pc pc-work" style={{ fontFamily: "'Noto Sans JP',system-ui,sans-serif", color: '#1F2430', background: '#F4F5F7', fontSize: 14, lineHeight: 1.6, display: 'flex', flexDirection: 'column' }}>
-      <PcHeader staffName={staffName} />
 
       <div className="pc-work-client" style={{ flex: '0 0 auto', background: '#FFFFFF', borderBottom: '1px solid #E1E4EA', padding: '10px 28px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 24px' }}>
         <a {...linkProps('/')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, textDecoration: 'none' }}>
