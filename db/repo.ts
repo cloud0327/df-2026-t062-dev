@@ -1,8 +1,10 @@
 // DB の読み書き。api と worker が共通に使う。どの関数も office_id で絞る。
 import { planBatch, sameValue, type BatchPlan, type CurrentField } from '../core/apply-batch.ts'
 import { saveOneHunk } from '../core/diff.ts'
-import { isShared } from '../core/fields.ts'
+import { syncStatus, type SyncStatus } from '../core/document-sync.ts'
+import { isShared, spec } from '../core/fields.ts'
 import { slotPages, type FormKind } from '../core/form.ts'
+import type { SurveySource } from '../core/survey-import.ts'
 import { countRequired } from '../core/required.ts'
 import { applyChanges, editSlot, slotKeys, type Values, type Who } from '../core/slots.ts'
 import { loadFormDef, publishedVersionId } from './forms.ts'
@@ -12,7 +14,7 @@ type Q = Db | Tx
 
 export interface Staff { id: string, officeId: string, name: string, email: string | null, role: string, officeName: string }
 
-export interface FieldRow { value: unknown, aiValue: unknown, by: Who, batchId: string | null, updatedAt: string }
+export interface FieldRow { value: unknown, aiValue: unknown, by: Who, batchId: string | null, updatedAt: string, surveySource?: SurveySource }
 export interface SavedRow { value: unknown, by: Who }
 
 export interface DocumentView {
@@ -25,6 +27,14 @@ export interface DocumentView {
   saved: Record<string, SavedRow>
   rev: number
   batches: { id: string, kind: string, label: string, createdAt: string, changes: number, kept: number }[]
+}
+
+export interface SyncDifference {
+  key: string
+  label: string
+  source: unknown
+  target: unknown
+  status: SyncStatus
 }
 
 export class NotFound extends Error {}
@@ -163,13 +173,14 @@ async function lockDocument(c: Tx, officeId: string, documentId: string) {
 
 async function readFields(db: Q, documentId: string, clientId: string): Promise<Record<string, FieldRow>> {
   const r = await db.query(
-    `SELECT key, value, ai_value, by, batch_id, updated_at FROM field_values
+    `SELECT key, value, ai_value, by, batch_id, updated_at, cite FROM field_values
      WHERE client_id = $2 AND (document_id = $1 OR document_id IS NULL)`,
     [documentId, clientId],
   )
   const out: Record<string, FieldRow> = {}
   for (const row of r.rows) {
-    out[row.key] = { value: row.value, aiValue: row.ai_value, by: row.by, batchId: row.batch_id, updatedAt: new Date(row.updated_at).toISOString() }
+    out[row.key] = { value: row.value, aiValue: row.ai_value, by: row.by, batchId: row.batch_id, updatedAt: new Date(row.updated_at).toISOString(),
+      ...(row.cite?.kind === 'survey-import' ? { surveySource: row.cite as SurveySource } : {}) }
   }
   return out
 }
@@ -198,6 +209,68 @@ export async function getDocument(db: Q, officeId: string, documentId: string): 
     rev: Number(rev.rows[0].rev),
     batches: batches.rows.map((b) => ({ id: b.id, kind: b.kind, label: b.label, createdAt: new Date(b.created_at).toISOString(), changes: Number(b.n), kept: Number(b.k) })),
   }
+}
+
+/** 入院時情報提供書と、その元になったアセスメントの差異。 */
+export async function getSyncDifferences(db: Q, officeId: string, targetId: string): Promise<SyncDifference[]> {
+  const target = (await db.query("SELECT id, client_id, template_version_id FROM documents WHERE id = $1 AND office_id = $2 AND kind = 'admission'", [targetId, officeId])).rows[0]
+  if (!target) throw new NotFound()
+  const source = (await db.query("SELECT id, template_version_id FROM documents WHERE client_id = $1 AND office_id = $2 AND kind = 'assessment'", [target.client_id, officeId])).rows[0]
+  if (!source) throw new NotFound()
+  const [sourceFields, targetFields, sourceSaved, reviews, copy] = await Promise.all([
+    readFields(db, source.id, target.client_id),
+    readFields(db, target.id, target.client_id),
+    readSaved(db, source.id),
+    db.query('SELECT key, source_value FROM document_sync_reviews WHERE office_id = $1 AND source_document_id = $2 AND target_document_id = $3', [officeId, source.id, target.id]),
+    db.query("SELECT changes FROM batches WHERE office_id = $1 AND document_id = $2 AND kind = 'copy' ORDER BY created_at ASC LIMIT 1", [officeId, target.id]),
+  ])
+  const sourceKeys = await allowedKeys(db, source.template_version_id)
+  const targetKeys = await allowedKeys(db, target.template_version_id)
+  const reviewed = new Map<string, unknown>(reviews.rows.map((r) => [r.key, r.source_value]))
+  const initial = new Map<string, unknown>(((copy.rows[0]?.changes ?? []) as { key: string, after: unknown }[]).map((x) => [x.key, x.after]))
+  const out: SyncDifference[] = []
+  for (const key of targetKeys) {
+    if (isShared(key) || !sourceKeys.has(key)) continue
+    const from = sourceFields[key]?.value ?? null
+    const to = targetFields[key]?.value ?? null
+    const status = syncStatus(from, to, reviewed.has(key) ? reviewed.get(key) : initial.get(key) ?? null, sourceSaved[key]?.value ?? null)
+    if (status) out.push({ key, label: spec(key)?.label ?? key, source: from, target: to, status })
+  }
+  return out.sort((a, b) => a.label.localeCompare(b.label, 'ja'))
+}
+
+/** 値を見た利用者の判断。両書類の値を確認し直してから反映する。 */
+export async function decideSyncDifference(db: Db, staff: Staff, targetId: string, input: { key: string, decision: 'apply' | 'keep', source: unknown, target: unknown }) {
+  return tx(db, async (c) => {
+    const target = (await c.query("SELECT id, client_id, template_version_id FROM documents WHERE id = $1 AND office_id = $2 AND kind = 'admission'", [targetId, staff.officeId])).rows[0]
+    if (!target) throw new NotFound()
+    const source = (await c.query("SELECT id, template_version_id FROM documents WHERE client_id = $1 AND office_id = $2 AND kind = 'assessment'", [target.client_id, staff.officeId])).rows[0]
+    if (!source) throw new NotFound()
+    for (const id of [source.id as string, target.id as string].sort()) await c.query('SELECT id FROM documents WHERE id = $1 FOR UPDATE', [id])
+    await c.query('SELECT id FROM clients WHERE id = $1 FOR UPDATE', [target.client_id])
+    const sourceKeys = await allowedKeys(c, source.template_version_id)
+    const targetKeys = await allowedKeys(c, target.template_version_id)
+    if (isShared(input.key) || !sourceKeys.has(input.key) || !targetKeys.has(input.key)) throw new BadRequest('書類間で比較できない欄です')
+    const fromFields = await readFields(c, source.id, target.client_id)
+    const toFields = await readFields(c, target.id, target.client_id)
+    const saved = await readSaved(c, source.id)
+    const from = fromFields[input.key]?.value ?? null
+    const to = toFields[input.key]?.value ?? null
+    if (!sameValue(from, input.source) || !sameValue(to, input.target)) throw new Conflict(input.key)
+    if (!sameValue(from, saved[input.key]?.value ?? null)) throw new Conflict('source_unsaved')
+    if (sameValue(from, to)) throw new Conflict('already_equal')
+    if (input.decision === 'apply') {
+      await writeField(c, staff.officeId, target.client_id, target.id, input.key, from, 'cm', staff.id)
+      await afterEdit(c, staff, { id: target.id, clientId: target.client_id }, [input.key], { [input.key]: from })
+    }
+    await c.query(
+      `INSERT INTO document_sync_reviews (office_id, source_document_id, target_document_id, key, source_value, reviewed_by)
+       VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (source_document_id, target_document_id, key)
+       DO UPDATE SET source_value = EXCLUDED.source_value, reviewed_by = EXCLUDED.reviewed_by, reviewed_at = now()`,
+      [staff.officeId, source.id, target.id, input.key, from === null ? null : JSON.stringify(from), staff.id],
+    )
+    await audit(c, staff, staff.officeId, `document.sync.${input.decision}`, { clientId: target.client_id, documentId: target.id }, { key: input.key })
+  })
 }
 
 /** 書類の欄として持てる key（その書類の様式の版の印字欄が読む key） */
@@ -229,7 +302,10 @@ async function writeField(c: Tx, officeId: string, clientId: string, documentId:
        ai_value = coalesce(EXCLUDED.ai_value, field_values.ai_value),
        by = EXCLUDED.by,
        batch_id = coalesce(EXCLUDED.batch_id, field_values.batch_id),
-       cite = coalesce(EXCLUDED.cite, field_values.cite),
+       cite = CASE
+         WHEN field_values.cite->>'kind' = 'survey-import' THEN EXCLUDED.cite
+         ELSE coalesce(EXCLUDED.cite, field_values.cite)
+       END,
        updated_by = EXCLUDED.updated_by,
        updated_at = now()`,
     [officeId, clientId, docId, key, JSON.stringify(value), extra.aiValue === undefined ? null : JSON.stringify(extra.aiValue), by, extra.batchId ?? null, extra.cite === undefined ? null : JSON.stringify(extra.cite), staffId],
@@ -257,6 +333,7 @@ export interface FieldChange {
   /** 画面がこの直しの元にした値（null は空）。サーバーの今の値と違えば Conflict（409） */
   base: unknown
   mode?: 'edit' | 'revert'
+  surveySource?: SurveySource
 }
 
 /**
@@ -271,6 +348,7 @@ export async function patchFields(db: Db, staff: Staff, documentId: string, chan
     const saved = await readSaved(c, d.id)
     const fields = await readFields(c, d.id, d.clientId)
     for (const ch of changes) {
+      if (ch.surveySource && d.kind !== 'assessment') throw new BadRequest('認定調査票はアセスメントに取り込めます')
       if (!allowed.has(ch.key)) throw new BadRequest(`この書類にない欄です: ${ch.key}`)
       if (!sameValue(fields[ch.key]?.value ?? null, ch.base ?? null)) throw new Conflict(ch.key)
     }
@@ -278,7 +356,7 @@ export async function patchFields(db: Db, staff: Staff, documentId: string, chan
       const back = ch.mode === 'revert' && saved[ch.key] && sameValue(saved[ch.key].value, ch.value)
       const cur = fields[ch.key]
       const by: Who = back ? saved[ch.key].by : ch.mode === 'revert' && cur ? cur.by : 'cm'
-      await writeField(c, staff.officeId, d.clientId, d.id, ch.key, ch.value, by, staff.id)
+      await writeField(c, staff.officeId, d.clientId, d.id, ch.key, ch.value, by, staff.id, { cite: ch.surveySource })
     }
     const values = applyChanges(plainValues(fields), changes.map((ch) => ({ key: ch.key, value: ch.value })))
     return { syncedTo: await afterEdit(c, staff, d, changes.map((ch) => ch.key), values) }
@@ -399,6 +477,8 @@ export interface ApplyInput {
   kind: 'recording' | 'copy' | 'seed'
   label: string
   jobId?: string
+  /** Worker の今回の実行。ジョブ完了と用紙への反映を同じ transaction で確定する */
+  completion?: { token: string, status: 'succeeded' | 'partial', steps: Record<string, unknown> }
   proposed: Record<string, { value: unknown, cite?: string[] }>
   /** プログラムが決める欄の値（1 回目の録音の日をアセスメント実施日にする、など） */
   system?: Record<string, unknown>
@@ -410,6 +490,17 @@ export interface ApplyInput {
  */
 export async function applyBatch(db: Db, input: ApplyInput, run: <T>(fn: (c: Tx) => Promise<T>) => Promise<T> = (fn) => tx(db, fn)): Promise<{ batchId: string | null, plan: BatchPlan }> {
   return run(async (c) => {
+    if (input.completion && !input.jobId) throw new BadRequest('jobId が必要です')
+    if (input.completion) {
+      const j = (await c.query('SELECT status, run_token, lease_until > now() AS lease_active FROM jobs WHERE id = $1 FOR UPDATE', [input.jobId])).rows[0]
+      if (!j || j.status !== 'processing' || j.run_token !== input.completion.token || !j.lease_active) throw new Conflict('job_lease')
+      const old = (await c.query("SELECT id, changes, kept FROM batches WHERE job_id = $1 AND kind = 'recording'", [input.jobId])).rows[0]
+      if (old) {
+        const plan: BatchPlan = { changes: old.changes, kept: old.kept, skipped: [] }
+        await finishJob(c, input, old.id, plan)
+        return { batchId: old.id as string, plan }
+      }
+    }
     const d = await lockDocument(c, input.officeId, input.documentId)
     const allowed = await allowedKeys(c, d.versionId)
     const fields = await readFields(c, d.id, d.clientId)
@@ -417,7 +508,10 @@ export async function applyBatch(db: Db, input: ApplyInput, run: <T>(fn: (c: Tx)
     const system = Object.fromEntries(Object.entries(input.system ?? {}).filter(([k]) => allowed.has(k)).map(([k, v]) => [k, { value: v }]))
     const proposed = { ...Object.fromEntries(Object.entries(input.proposed).filter(([k]) => allowed.has(k))), ...system }
     const plan = planBatch(current, proposed, new Set(Object.keys(system)))
-    if (!plan.changes.length && !plan.kept.length) return { batchId: null, plan }
+    if (!plan.changes.length && !plan.kept.length) {
+      if (input.completion) await finishJob(c, input, null, plan)
+      return { batchId: null, plan }
+    }
     const batch = (await c.query(
       'INSERT INTO batches (office_id, client_id, document_id, kind, label, job_id, changes, kept) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id',
       [input.officeId, d.clientId, d.id, input.kind, input.label, input.jobId ?? null, JSON.stringify(plan.changes), JSON.stringify(plan.kept)],
@@ -427,21 +521,31 @@ export async function applyBatch(db: Db, input: ApplyInput, run: <T>(fn: (c: Tx)
     }
     await c.query('UPDATE clients SET updated_at = now() WHERE id = $1', [d.clientId])
     await c.query('UPDATE documents SET updated_at = now() WHERE id = $1', [d.id])
+    if (input.completion) await finishJob(c, input, batch.id, plan)
     return { batchId: batch.id as string, plan }
   })
 }
 
+async function finishJob(c: Tx, input: ApplyInput, batchId: string | null, plan: BatchPlan) {
+  const result = await c.query(
+    "UPDATE jobs SET status = $3, step = 'done', batch_id = $4, steps = steps || $5::jsonb, lease_until = NULL, run_token = NULL, error_kind = NULL, updated_at = now() WHERE id = $1 AND run_token = $2 RETURNING id",
+    [input.jobId, input.completion!.token, input.completion!.status, batchId, JSON.stringify({ ...input.completion!.steps, apply: { changes: plan.changes.length, kept: plan.kept.length } })],
+  )
+  if (!result.rows.length) throw new Conflict('job_lease')
+}
+
 /** 入院時情報提供書を作る。アセスメントに値がある欄を写す（写したあとは別の値。基本情報だけはつながったまま） */
 export async function createAdmission(db: Db, staff: Staff, clientId: string) {
-  const existing = (await db.query("SELECT id FROM documents WHERE client_id = $1 AND office_id = $2 AND kind = 'admission'", [clientId, staff.officeId])).rows[0]
-  if (existing) return { id: existing.id as string, created: false }
-  const assess = (await db.query("SELECT id FROM documents WHERE client_id = $1 AND office_id = $2 AND kind = 'assessment'", [clientId, staff.officeId])).rows[0]
-  if (!assess) throw new NotFound()
-  const office = (await db.query('SELECT name, phone, fax FROM offices WHERE id = $1', [staff.officeId])).rows[0]
   return tx(db, async (c) => {
+    const assess = (await c.query("SELECT id FROM documents WHERE client_id = $1 AND office_id = $2 AND kind = 'assessment' FOR UPDATE", [clientId, staff.officeId])).rows[0]
+    if (!assess) throw new NotFound()
+    await c.query('SELECT id FROM clients WHERE id = $1 FOR UPDATE', [clientId])
+    const existing = (await c.query("SELECT id FROM documents WHERE client_id = $1 AND office_id = $2 AND kind = 'admission'", [clientId, staff.officeId])).rows[0]
+    if (existing) return { id: existing.id as string, created: false }
+    const office = (await c.query('SELECT name, phone, fax FROM offices WHERE id = $1', [staff.officeId])).rows[0]
     const version = await publishedVersionId(c, staff.officeId, 'admission')
     const doc = (await c.query(
-      "INSERT INTO documents (office_id, client_id, kind, template_version_id, created_by) VALUES ($1,$2,'admission',$3,$4) ON CONFLICT (client_id, kind) DO UPDATE SET updated_at = now() RETURNING id",
+      "INSERT INTO documents (office_id, client_id, kind, template_version_id, created_by) VALUES ($1,$2,'admission',$3,$4) RETURNING id",
       [staff.officeId, clientId, version, staff.id],
     )).rows[0]
     const src = await readFields(c, assess.id, clientId)
@@ -465,38 +569,72 @@ export async function createAdmission(db: Db, staff: Staff, clientId: string) {
 
 // ---------- 録音とジョブ ----------
 
-export async function createRecording(db: Q, staff: Staff, clientId: string, mime: string) {
+export async function createRecording(db: Tx, staff: Staff, clientId: string, mime: string, deviceRecordingId?: string) {
   const doc = (await db.query("SELECT id FROM documents WHERE client_id = $1 AND office_id = $2 AND kind = 'assessment'", [clientId, staff.officeId])).rows[0]
   if (!doc) throw new NotFound()
   const ext = mime.includes('mp4') || mime.includes('m4a') || mime.includes('aac') ? 'm4a' : mime.includes('webm') ? 'webm' : mime.includes('ogg') ? 'ogg' : mime.includes('wav') ? 'wav' : 'bin'
+  const inserted = (await db.query(
+    `INSERT INTO recordings (office_id, client_id, document_id, object_path, mime, created_by, device_recording_id)
+     VALUES ($1,$2,$3,'',$4,$5,$6)
+     ON CONFLICT (office_id, client_id, device_recording_id) DO NOTHING RETURNING id`,
+    [staff.officeId, clientId, doc.id, mime, staff.id, deviceRecordingId ?? null],
+  )).rows[0]
+  if (inserted) {
+    const objectPath = `recordings/${staff.officeId}/${clientId}/${inserted.id}.${ext}`
+    await db.query('UPDATE recordings SET object_path = $1 WHERE id = $2', [objectPath, inserted.id])
+    await audit(db, staff, staff.officeId, 'recording.start', { clientId, documentId: doc.id })
+    return { id: inserted.id as string, objectPath, mime, status: 'uploading', uploadUrl: null }
+  }
   const r = (await db.query(
-    "INSERT INTO recordings (office_id, client_id, document_id, object_path, mime, created_by) VALUES ($1,$2,$3,'',$4,$5) RETURNING id",
-    [staff.officeId, clientId, doc.id, mime, staff.id],
+    `SELECT id, object_path, mime, status, upload_url FROM recordings
+     WHERE office_id = $1 AND client_id = $2 AND device_recording_id = $3 FOR UPDATE`,
+    [staff.officeId, clientId, deviceRecordingId],
   )).rows[0]
-  const objectPath = `recordings/${staff.officeId}/${clientId}/${r.id}.${ext}`
-  await db.query('UPDATE recordings SET object_path = $1 WHERE id = $2', [objectPath, r.id])
-  await audit(db, staff, staff.officeId, 'recording.start', { clientId, documentId: doc.id })
-  return { id: r.id as string, objectPath, documentId: doc.id as string }
+  if (r.mime !== mime) throw new Conflict('同じ録音IDの形式が一致しません')
+  return { id: r.id as string, objectPath: r.object_path as string, mime: r.mime as string, status: r.status as string, uploadUrl: r.upload_url as string | null }
 }
 
-export async function getRecording(db: Q, officeId: string, recordingId: string) {
-  const r = (await db.query('SELECT id, client_id, document_id, object_path, mime, status, duration_ms FROM recordings WHERE id = $1 AND office_id = $2', [recordingId, officeId])).rows[0]
-  if (!r) throw new NotFound()
-  return { id: r.id as string, clientId: r.client_id as string, documentId: r.document_id as string, objectPath: r.object_path as string, mime: r.mime as string, status: r.status as string, durationMs: r.duration_ms as number | null }
+export async function setRecordingUploadUrl(db: Tx, recordingId: string, url: string) {
+  await db.query('UPDATE recordings SET upload_url = $1 WHERE id = $2', [url, recordingId])
 }
 
-/** 送り終わりを受けて、ジョブを作る（同じ録音に 2 つは作らない） */
-export async function completeRecording(db: Q, staff: Staff, recordingId: string, bytes: number, durationMs: number | null) {
-  const rec = await getRecording(db, staff.officeId, recordingId)
-  await db.query("UPDATE recordings SET status = 'uploaded', bytes = $1, duration_ms = $2 WHERE id = $3", [bytes, durationMs, rec.id])
-  const eta = durationMs ? Math.max(60, Math.round(durationMs / 1000 / 6) + 90) : 300
-  const job = (await db.query(
-    `INSERT INTO jobs (office_id, client_id, document_id, recording_id, eta_seconds) VALUES ($1,$2,$3,$4,$5)
-     ON CONFLICT (recording_id) DO UPDATE SET updated_at = now() RETURNING id, status`,
-    [staff.officeId, rec.clientId, rec.documentId, rec.id, eta],
-  )).rows[0]
-  await audit(db, staff, staff.officeId, 'recording.complete', { clientId: rec.clientId, documentId: rec.documentId }, { bytes, durationMs })
-  return { jobId: job.id as string, status: job.status as string }
+/** 録音の行をロックし、完了とジョブの作成を同じトランザクションで確定する。 */
+export async function completeRecording(
+  db: Db, staff: Staff, recordingId: string, durationMs: number | null, expectedBytes: number | undefined,
+  uploadedSize: (path: string) => Promise<number | null>,
+): Promise<string | null> {
+  return tx(db, async (c) => {
+    const rec = (await c.query(
+      'SELECT client_id, document_id, object_path, bytes FROM recordings WHERE id = $1 AND office_id = $2 FOR UPDATE',
+      [recordingId, staff.officeId],
+    )).rows[0]
+    if (!rec) throw new NotFound()
+    const existing = (await c.query('SELECT id FROM jobs WHERE recording_id = $1', [recordingId])).rows[0]
+    const bytes = existing ? Number(rec.bytes) : await uploadedSize(rec.object_path)
+    if (!bytes || (expectedBytes !== undefined && bytes !== expectedBytes)) return null
+    if (existing) return existing.id as string
+
+    await c.query("UPDATE recordings SET status = 'uploaded', bytes = $1, duration_ms = $2, upload_url = NULL WHERE id = $3", [bytes, durationMs, recordingId])
+    const eta = durationMs ? Math.max(60, Math.round(durationMs / 1000 / 6) + 90) : 300
+    const job = (await c.query(
+      'INSERT INTO jobs (office_id, client_id, document_id, recording_id, eta_seconds) VALUES ($1,$2,$3,$4,$5) RETURNING id',
+      [staff.officeId, rec.client_id, rec.document_id, recordingId, eta],
+    )).rows[0]
+    await audit(c, staff, staff.officeId, 'recording.complete', { clientId: rec.client_id, documentId: rec.document_id }, { bytes, durationMs })
+    return job.id as string
+  })
+}
+
+/** worker にジョブが見えるよう、ジョブ作成の確定後に積む。積めなければ次の complete でやり直せる。 */
+export async function dispatchRecordingJob(db: Db, jobId: string, enqueue: () => Promise<void>) {
+  return tx(db, async (c) => {
+    const job = (await c.query('SELECT status, initial_enqueued_at FROM jobs WHERE id = $1 FOR UPDATE', [jobId])).rows[0]
+    if (job.status === 'queued' && !job.initial_enqueued_at) {
+      await enqueue()
+      await c.query('UPDATE jobs SET initial_enqueued_at = now() WHERE id = $1', [jobId])
+    }
+    return { jobId, status: job.status as string }
+  })
 }
 
 export interface JobView {
@@ -507,16 +645,20 @@ export interface JobView {
   createdAt: string
   updatedAt: string
   batch: { changes: number, kept: number } | null
+  incompleteFields: string[]
+  errorKind: string | null
 }
 
-/** 処理中のジョブと、終わって 15 分以内のジョブ */
+/** 処理中・直近 15 分のジョブと、最後のジョブ（後日も失敗が分かるようにする） */
 export async function activeJobs(db: Q, officeId: string, clientId: string): Promise<JobView[]> {
   const r = await db.query(
-    `SELECT j.id, j.status, j.step, j.eta_seconds, j.created_at, j.updated_at,
+    `SELECT j.id, j.status, j.step, j.eta_seconds, j.created_at, j.updated_at, j.error_kind,
+            j.steps #> '{write,incompleteFields}' AS incomplete_fields,
             jsonb_array_length(b.changes) AS n, jsonb_array_length(b.kept) AS k
      FROM jobs j LEFT JOIN batches b ON b.id = j.batch_id
      WHERE j.office_id = $1 AND j.client_id = $2
-       AND (j.status IN ('queued', 'processing') OR j.updated_at > now() - interval '15 minutes')
+       AND (j.status IN ('queued', 'processing') OR j.updated_at > now() - interval '15 minutes'
+            OR j.id = (SELECT last.id FROM jobs last WHERE last.office_id = $1 AND last.client_id = $2 ORDER BY last.created_at DESC LIMIT 1))
      ORDER BY j.created_at DESC LIMIT 5`,
     [officeId, clientId],
   )
@@ -528,5 +670,13 @@ export async function activeJobs(db: Q, officeId: string, clientId: string): Pro
     createdAt: new Date(j.created_at).toISOString(),
     updatedAt: new Date(j.updated_at).toISOString(),
     batch: j.n === null ? null : { changes: Number(j.n), kept: Number(j.k) },
+    incompleteFields: stringValues(j.incomplete_fields),
+    errorKind: j.error_kind ?? null,
   }))
+}
+
+function stringValues(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  const strings: string[] = value.filter((item): item is string => typeof item === 'string')
+  return [...new Set(strings)]
 }

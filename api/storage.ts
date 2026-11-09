@@ -2,7 +2,7 @@
 //   STORAGE_MODE=gcs: Cloud Storage。録音は api を通さず、ブラウザから再開できる送信（resumable upload）で直接入れる
 //   STORAGE_MODE=local（既定）: .data/storage の下。送信は api の /api/dev-upload が同じ約束（Content-Range と 308）で受ける
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
-import { mkdir, readFile, stat, writeFile, appendFile } from 'node:fs/promises'
+import { mkdir, readFile, stat, writeFile, appendFile, link, unlink } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 
 /** forms は様式の元の PDF とページの画像（非公開。上書きしない。画面には期限つきの URL で渡す） */
@@ -57,7 +57,7 @@ export class GcsStorage implements Storage {
   async createUploadSession(bucket: Bucket, path: string, mime: string, origin: string | undefined) {
     const file = (await this.bucket(bucket)).file(path)
     // Origin を渡しておかないと、ブラウザからの PUT が CORS で止まる
-    const [url] = await file.createResumableUpload({ metadata: { contentType: mime }, origin })
+    const [url] = await file.createResumableUpload({ metadata: { contentType: mime }, origin, preconditionOpts: { ifGenerationMatch: 0 } })
     return url
   }
 
@@ -106,7 +106,7 @@ export class GcsStorage implements Storage {
 export class LocalStorage implements Storage {
   readonly root: string
   private apiOrigin: string
-  private sessions = new Map<string, { bucket: Bucket, path: string, total?: number }>()
+  private sessions = new Map<string, { file: string, partial: string, tail: Promise<void> }>()
   private secret: Buffer
 
   constructor(root = process.env.LOCAL_STORAGE_DIR ?? '.data/storage', apiOrigin = process.env.PUBLIC_API_ORIGIN ?? '') {
@@ -136,35 +136,47 @@ export class LocalStorage implements Storage {
   }
 
   async createUploadSession(bucket: Bucket, path: string) {
-    const token = createHash('sha256').update(randomUUID()).digest('hex').slice(0, 32)
-    this.sessions.set(token, { bucket, path })
-    await mkdir(dirname(this.file(bucket, path)), { recursive: true })
-    await writeFile(this.file(bucket, path), new Uint8Array())
+    const token = randomUUID().replaceAll('-', '')
+    const file = this.file(bucket, path)
+    const partial = `${file}.${token}.part`
+    await mkdir(dirname(file), { recursive: true })
+    await writeFile(partial, new Uint8Array())
+    this.sessions.set(token, { file, partial, tail: Promise.resolve() })
     return `${this.apiOrigin}/api/dev-upload/${token}`
   }
 
-  /** /api/dev-upload が呼ぶ。GCS と同じく、途中なら 308 と Range、送り終われば 200 */
+  /** /api/dev-upload が呼ぶ。完了したファイルだけを、上書きせずに公開する。 */
   async receive(token: string, contentRange: string | undefined, chunk: Uint8Array): Promise<{ status: 200 | 308 | 404 | 400, range?: string }> {
-    const s = this.sessions.get(token)
-    if (!s) return { status: 404 }
-    const file = this.file(s.bucket, s.path)
-    const current = (await stat(file)).size
-    const m = contentRange ? /^bytes (?:(\d+)-(\d+)|\*)\/(\d+|\*)$/.exec(contentRange) : null
-    if (contentRange && !m) return { status: 400 }
-    if (m && m[1] !== undefined) {
-      const start = Number(m[1])
-      if (start !== current) return { status: 308, range: current ? `bytes=0-${current - 1}` : undefined }
-      await appendFile(file, chunk)
-    } else if (!contentRange) {
-      await appendFile(file, chunk)
-    }
-    const size = (await stat(file)).size
-    const total = m && m[3] !== '*' ? Number(m[3]) : contentRange ? undefined : size
-    if (total !== undefined && size >= total) {
-      this.sessions.delete(token)
-      return { status: 200 }
-    }
-    return { status: 308, range: size ? `bytes=0-${size - 1}` : undefined }
+    const session = this.sessions.get(token)
+    if (!session) return { status: 404 }
+    const result = session.tail.then(async () => {
+      if (!this.sessions.has(token)) return { status: 200 } as const
+      const current = (await stat(session.partial)).size
+      const range = contentRange ? /^bytes (?:(\d+)-(\d+)|\*)\/(\d+|\*)$/.exec(contentRange) : null
+      if (contentRange && !range) return { status: 400 } as const
+      const total = range && range[3] !== '*' ? Number(range[3]) : contentRange ? undefined : current + chunk.length
+      if (range?.[1] !== undefined) {
+        const start = Number(range[1]), end = Number(range[2])
+        if (end - start + 1 !== chunk.length || (total !== undefined && end >= total)) return { status: 400 } as const
+        if (start !== current) return { status: 308, range: current ? `bytes=0-${current - 1}` : undefined } as const
+      }
+      const writing = !contentRange || range?.[1] !== undefined
+      if (writing) await appendFile(session.partial, chunk)
+      const size = current + (writing ? chunk.length : 0)
+      if (total !== undefined && size === total && size > 0) {
+        try {
+          await link(session.partial, session.file)
+        } catch (e) {
+          if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e
+        }
+        this.sessions.delete(token)
+        await unlink(session.partial).catch(() => {})
+        return { status: 200 } as const
+      }
+      return { status: 308, range: size ? `bytes=0-${size - 1}` : undefined } as const
+    })
+    session.tail = result.then(() => {}, () => {})
+    return result
   }
 
   async size(bucket: Bucket, path: string) {

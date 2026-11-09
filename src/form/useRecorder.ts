@@ -1,151 +1,157 @@
-// iPad の録音と送信。
-//   - 録音は MediaRecorder。止めるまで端末（IndexedDB）にも書き出し、サーバーが受け取ったと答えるまで消さない
-//   - 送信は Cloud Storage の再開できる送信（api が出す URL に、8 MiB ずつ Content-Range つきで PUT）。電波が切れても続きから
-//   - 録音中は画面が消えないようにする（Wake Lock）
+// iPad の録音と送信。録音は端末に逐次保存し、API が受け付けた録音だけを消す。
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api } from '../lib/api.ts'
-import { pickRecordingMime } from '../../core/audio.ts'
-
-const CHUNK = 8 * 1024 * 1024 // 256 KiB の倍数
-const DB = 'careman-recordings'
-
-function idb<T>(fn: (s: IDBObjectStore) => IDBRequest<T>, mode: IDBTransactionMode = 'readonly'): Promise<T | undefined> {
-  return new Promise((resolve) => {
-    try {
-      const open = indexedDB.open(DB, 1)
-      open.onupgradeneeded = () => open.result.createObjectStore('pending')
-      open.onerror = () => resolve(undefined)
-      open.onsuccess = () => {
-        const tx = open.result.transaction('pending', mode)
-        const req = fn(tx.objectStore('pending'))
-        req.onsuccess = () => resolve(req.result)
-        req.onerror = () => resolve(undefined)
-      }
-    } catch {
-      resolve(undefined)
-    }
-  })
-}
-
-interface PendingRec { clientId: string, blob: Blob, mime: string, durationMs: number }
-
-/** 文字起こしできる形式で録る（PC の Chrome は webm の Opus、Safari は mp4 の AAC） */
-function pickMime(): string {
-  return pickRecordingMime((m) => typeof MediaRecorder !== 'undefined' && !!MediaRecorder.isTypeSupported?.(m))
-}
-
-/** 再開できる送信。進み具合（0〜100）を返す */
-async function upload(url: string, blob: Blob, onPct: (n: number) => void) {
-  const total = blob.size
-  const put = (start: number, end: number) => new Promise<{ status: number, range: string | null }>((resolve, reject) => {
-    const xhr = new XMLHttpRequest()
-    xhr.open('PUT', url)
-    xhr.setRequestHeader('Content-Range', end > start ? `bytes ${start}-${end - 1}/${total}` : `bytes */${total}`)
-    xhr.upload.onprogress = (e) => onPct(Math.min(99, Math.round(((start + e.loaded) / total) * 100)))
-    xhr.onload = () => resolve({ status: xhr.status, range: xhr.getResponseHeader('Range') })
-    xhr.onerror = () => reject(new Error('network'))
-    xhr.send(end > start ? blob.slice(start, end) : null)
-  })
-  let offset = 0
-  let failures = 0
-  while (offset < total) {
-    try {
-      const r = await put(offset, Math.min(total, offset + CHUNK))
-      if (r.status === 200 || r.status === 201) { onPct(100); return }
-      if (r.status === 308) {
-        offset = r.range ? Number(r.range.split('-')[1]) + 1 : 0
-        failures = 0
-        continue
-      }
-      throw new Error(`HTTP ${r.status}`)
-    } catch {
-      if (++failures > 5) throw new Error('送れませんでした')
-      await new Promise((res) => setTimeout(res, 1500 * failures))
-      // どこまで届いたかを聞いてから続ける
-      const s = await put(total, total).catch(() => null)
-      if (s?.status === 200 || s?.status === 201) { onPct(100); return }
-      offset = s?.range ? Number(s.range.split('-')[1]) + 1 : offset
-    }
-  }
-  onPct(100)
-}
+import { captureRecording } from './recordingCapture.ts'
+import { deleteRecording, pendingRecordings, saveRecording, type PendingRecording } from './recordingStore.ts'
+import { sendRecording } from './recordingUpload.ts'
 
 export type RecPhase = 'idle' | 'rec' | 'upload' | 'sent' | 'error'
 
+interface RecorderScope {
+  clientId: string
+  disposed: boolean
+  busy: boolean
+  capture: ReturnType<typeof captureRecording> | null
+  unsaved: Map<string, PendingRecording>
+}
+
+const localLocks = new Map<string, Promise<void>>()
+
+function withRecordingLock(clientId: string, run: () => Promise<void>) {
+  const key = `careman-recordings:${clientId}`
+  // 別タブで録音中の途中データを復旧対象にしない。
+  if (navigator.locks) return navigator.locks.request(key, run)
+  const work = (localLocks.get(key) ?? Promise.resolve()).then(run)
+  const tail = work.then(() => {}, () => {})
+  localLocks.set(key, tail)
+  return work.finally(() => { if (localLocks.get(key) === tail) localLocks.delete(key) })
+}
+
 export function useRecorder(clientId: string, onSent: () => void) {
   const [phase, setPhase] = useState<RecPhase>('idle')
+  const [busy, setBusy] = useState(false)
   const [pct, setPct] = useState(0)
   const [elapsed, setElapsed] = useState(0)
   const [error, setError] = useState('')
-  const rec = useRef<MediaRecorder | null>(null)
-  const chunks = useRef<Blob[]>([])
-  const started = useRef(0)
-  const wake = useRef<{ release(): Promise<void> } | null>(null)
+  const [storageWarning, setStorageWarning] = useState(false)
+  const scope = useRef<RecorderScope | null>(null)
   const sent = useRef(onSent)
   sent.current = onSent
 
   useEffect(() => {
     if (phase !== 'rec') return
-    const t = setInterval(() => setElapsed(Date.now() - started.current), 500)
-    return () => clearInterval(t)
+    const capture = scope.current?.capture
+    if (!capture) return
+    const timer = setInterval(() => setElapsed(Date.now() - capture.startedAt), 500)
+    return () => clearInterval(timer)
   }, [phase])
 
-  const send = useCallback(async (p: PendingRec) => {
-    setPhase('upload')
-    setPct(0)
+  const sendPending = useCallback(async (current: RecorderScope) => {
     try {
-      const { recordingId, uploadUrl } = await api.startRecording(p.clientId, p.mime || 'audio/webm')
-      await upload(uploadUrl, p.blob, setPct)
-      await api.completeRecording(recordingId, p.durationMs)
-      await idb((s) => s.delete(p.clientId), 'readwrite')
-      setPhase('sent')
-      sent.current()
-    } catch (e) {
-      setError(String((e as Error).message))
-      setPhase('error')
+      for (const recording of current.unsaved.values()) {
+        await saveRecording(recording)
+        current.unsaved.delete(recording.id)
+      }
+    } catch {
+      throw new Error('録音をこの端末に保存できませんでした。画面を開いたまま、空き容量などを確認して再試行してください。')
     }
+    const pending = await pendingRecordings(current.clientId).catch(() => {
+      throw new Error('端末の録音を読み込めませんでした。ブラウザの保存設定を確認して再試行してください。')
+    })
+    for (const recording of pending) {
+      if (current.disposed) return
+      setPhase('upload')
+      setPct(0)
+      try {
+        await sendRecording(recording, (n) => { if (!current.disposed) setPct(n) })
+      } catch {
+        throw new Error('録音を送れませんでした。未送信の録音はこの端末に残っています。通信できる場所で再試行してください。')
+      }
+      await deleteRecording(recording.id).catch(() => {
+        throw new Error('録音は送信済みですが、この端末の送信待ち一覧を更新できませんでした。再試行してください。')
+      })
+      if (!current.disposed) sent.current()
+    }
+    if (!current.disposed) setPhase(pending.length ? 'sent' : 'idle')
   }, [])
 
-  // 前に送り終わらなかった録音があれば、続きから送る
-  useEffect(() => {
-    void idb<PendingRec>((s) => s.get(clientId) as IDBRequest<PendingRec>).then((p) => { if (p?.blob) void send(p) })
-  }, [clientId, send])
-
-  const start = useCallback(async () => {
+  const run = useCallback(async (current: RecorderScope, action: () => Promise<void>) => {
+    if (current.disposed || current.busy) return
+    current.busy = true
+    setBusy(true)
     setError('')
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const mime = pickMime()
-      const r = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined)
-      chunks.current = []
-      r.ondataavailable = (e) => { if (e.data.size) chunks.current.push(e.data) }
-      r.start(1000)
-      rec.current = r
-      started.current = Date.now()
-      setElapsed(0)
-      setPhase('rec')
-      try { wake.current = await (navigator as Navigator & { wakeLock?: { request(t: 'screen'): Promise<{ release(): Promise<void> }> } }).wakeLock?.request('screen') ?? null } catch { /* 使えない端末 */ }
+      await withRecordingLock(current.clientId, async () => {
+        if (!current.disposed) await action()
+      })
     } catch (e) {
-      setError(`マイクを使えませんでした（${(e as Error).message}）`)
-      setPhase('error')
+      if (!current.disposed) {
+        setError((e as Error).message)
+        setPhase('error')
+      }
+    } finally {
+      current.busy = false
+      if (!current.disposed) setBusy(false)
     }
   }, [])
 
-  const stop = useCallback(async () => {
-    const r = rec.current
-    if (!r) return
-    const done = new Promise<void>((res) => { r.onstop = () => res() })
-    r.stop()
-    r.stream.getTracks().forEach((t) => t.stop())
-    await done
-    void wake.current?.release().catch(() => {})
-    const mime = r.mimeType || pickMime()
-    const p: PendingRec = { clientId, blob: new Blob(chunks.current, { type: mime }), mime, durationMs: Date.now() - started.current }
-    rec.current = null
-    await idb((s) => s.put(p, clientId), 'readwrite')
-    await send(p)
-  }, [clientId, send])
+  useEffect(() => {
+    const current: RecorderScope = { clientId, disposed: false, busy: false, capture: null, unsaved: new Map() }
+    scope.current = current
+    setPhase('idle')
+    setStorageWarning(false)
+    const stopCapture = () => current.capture?.stop()
+    window.addEventListener('pagehide', stopCapture)
+    void run(current, () => sendPending(current))
+    return () => {
+      current.disposed = true
+      window.removeEventListener('pagehide', stopCapture)
+      stopCapture()
+    }
+  }, [clientId, run, sendPending])
 
+  const start = useCallback(async () => {
+    const current = scope.current
+    if (!current) return
+    await run(current, async () => {
+      let stream: MediaStream | undefined
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        if (current.disposed) {
+          stream.getTracks().forEach((track) => track.stop())
+          return
+        }
+        setStorageWarning(false)
+        current.capture = captureRecording(stream, current.clientId, saveRecording, (saved) => {
+          if (!current.disposed) setStorageWarning(!saved)
+        })
+      } catch (e) {
+        stream?.getTracks().forEach((track) => track.stop())
+        throw new Error(`マイクを使えませんでした（${(e as Error).message}）`)
+      }
+
+      setElapsed(0)
+      setPhase('rec')
+      const recording = await current.capture.finished
+      current.capture = null
+      if (!recording.blob.size) throw new Error('録音データを取得できませんでした。もう一度録音してください。')
+
+      // 離脱時も、最後のチャンクまで保存してからロックを解放する。
+      current.unsaved.set(recording.id, recording)
+      if (current.disposed) {
+        await saveRecording(recording)
+        return
+      }
+      setPhase('upload')
+      setPct(0)
+      await sendPending(current)
+    })
+  }, [run, sendPending])
+
+  const stop = () => scope.current?.capture?.stop()
+  const retry = () => {
+    const current = scope.current
+    if (current) void run(current, () => sendPending(current))
+  }
   const mmss = `${String(Math.floor(elapsed / 60000)).padStart(2, '0')}:${String(Math.floor(elapsed / 1000) % 60).padStart(2, '0')}`
-  return { phase, pct, elapsed: mmss, error, start, stop, reset: () => setPhase('idle') }
+  return { phase, busy, pct, elapsed: mmss, error, storageWarning, start, stop, retry, reset: () => setPhase('idle') }
 }

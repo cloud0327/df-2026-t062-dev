@@ -2,6 +2,16 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { planBatch } from '../core/apply-batch.ts'
 import { revertHunk, saveOneHunk, sentenceDiff } from '../core/diff.ts'
+import { syncStatus } from '../core/document-sync.ts'
+
+test('書類間の差異: 元の変更と未保存・確認済みの違いを判定する', () => {
+  assert.equal(syncStatus('新', '新', '旧', '新'), null)
+  assert.equal(syncStatus('旧', '別の記載', '旧', '旧'), 'different')
+  assert.equal(syncStatus('新', '旧', '旧', '旧'), 'pending')
+  assert.equal(syncStatus('新', '旧', '旧', '新'), 'review')
+  assert.equal(syncStatus(null, '旧', '旧', null), 'review')
+  assert.equal(syncStatus({ a: 1, b: 2 }, { b: 2, a: 1 }, null, { a: 1, b: 2 }), null)
+})
 
 test('書き換えの決まり: ケアマネの欄は書かず、AI の欄は書き換え、空の欄は足す', () => {
   const plan = planBatch(

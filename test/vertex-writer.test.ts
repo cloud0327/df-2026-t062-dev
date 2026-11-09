@@ -37,6 +37,7 @@ test('1 回目: 書く → 読み直しで根拠のない文を落とす。1 つ
   const r = await sheetWriter(fakeLlm(handler), { concurrency: 2 }).write({ visits: [v1], newVisitId: 'v1', current: {}, people, first: true })
   assert.deepEqual(r.values, { [text!.key]: { value: '左半身が動きにくい。', cite: ['s1-1'] } })   // zzz（記録にない id）は根拠から外れる
   assert.deepEqual(r.failed, [String(other![0])])
+  assert.deepEqual(r.incompleteFields.sort(), [...groups.get(other![0])!.map((s) => s.key), text!.key].sort())
 })
 
 test('2 回目: 今の値を渡さず新しい記録だけで直し、新しい記録を根拠にした直しだけ入れる', async () => {
@@ -56,9 +57,25 @@ test('2 回目: 今の値を渡さず新しい記録だけで直し、新しい�
   assert.equal(r.values[text!.key].value, '左半身が動きにくい。玄関に段差がある。')
   assert.deepEqual(r.values[text!.key].cite, ['s2-1'])
   assert.deepEqual(r.failed, [])
+  assert.deepEqual(r.incompleteFields, [])
   // 直す係には新しい記録だけを見せる（1 回目の発言は入らない）
   assert.ok(seen.every((p) => p.includes('s2-1') && !p.includes('s1-1')))
   assert.ok(seen.some((p) => p.includes('- 今の値: "左半身が動きにくい。"')))
+})
+
+test('型に合わず AI の値を落とした欄を未反映欄として返す', async () => {
+  const choice = specs.find((s) => s.type === 'enum' && s.choices?.length)
+  assert.ok(choice)
+  const handler: Handler = (_p, schema, m) => {
+    if (m.step === '欄の値') return Object.fromEntries(Object.keys(schema.properties).map((key) => [key, {
+      value: key === choice.key ? '存在しない選択肢' : null,
+      from: key === choice.key ? ['s1-1'] : [],
+    }]))
+    if (m.step === '読み直し') return { checks: [] }
+    return {}
+  }
+  const r = await sheetWriter(fakeLlm(handler)).write({ visits: [v1], newVisitId: 'v1', current: {}, people, first: true })
+  assert.ok(r.incompleteFields.includes(choice.key))
 })
 
 test('mapLimit は同時に動かす数を絞り、順番どおりに返す', async () => {
