@@ -1,6 +1,7 @@
 // 本物の中身（Speech-to-Text Chirp 3 と Gemini）。AI_PROVIDER=vertex のときだけ読み込まれる。
 // 環境変数: GOOGLE_CLOUD_PROJECT、GEMINI_LOCATION（既定 global）、GEMINI_MODEL（既定 gemini-3.8-flash）、
-// GEMINI_CONCURRENCY（既定 4）、GEMINI_YEN_IN／GEMINI_YEN_OUT、STT_LOCATION（既定 asia-northeast1）
+// GEMINI_CONCURRENCY（既定 4）、GEMINI_THINKING_LEVEL（既定 LOW。DEFAULT でモデルの既定）、
+// GEMINI_YEN_IN／GEMINI_YEN_OUT／GEMINI_YEN_CACHED（キャッシュに当たった入力。既定は入力の 1 割）、STT_LOCATION（既定 asia-northeast1）
 import type { Providers } from '../types.ts'
 import { geminiFactory } from './gemini.ts'
 import { speakerAssigner } from './speakers.ts'
