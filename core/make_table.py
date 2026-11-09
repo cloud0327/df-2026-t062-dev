@@ -5,6 +5,7 @@
 import collections
 import json
 import pathlib
+import re
 import sys
 
 HERE = pathlib.Path(__file__).parent
@@ -148,12 +149,18 @@ def required_keys(d, form):
     return out
 
 
+NUMBERED = re.compile(r"^survey\.\d_\d+$")
+
+
 def choices_text(f, choice_sets):
     ch = f.get("choices")
     if ch is None:
         return ""
     if isinstance(ch, str):
         return f"〔{ch}〕"
+    if NUMBERED.match(f.get("key", "")):
+        # 用紙は番号だけを印刷する。番号と選択肢を並べて見せる（core/reference/認定調査の選択肢.json）
+        return "・".join(f"{i + 1} {c}" for i, c in enumerate(ch))
     s = "・".join(ch)
     return s if len(s) <= 60 else s[:60] + "…"
 

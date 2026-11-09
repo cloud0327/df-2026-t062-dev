@@ -92,3 +92,35 @@ for (const [name, rel, strictDates] of [
     assert.deepEqual(bad, [])
   })
 }
+
+// 全社協の用紙は、要介護認定項目を番号（1 2 3 …）だけで印刷する。番号 n は choices の n 番目。
+// その並びが、現場の参考資料（認定調査票の選択肢）と合うか。
+interface RefItem { key: string, sub?: string, name: string, noneFirst?: boolean, choices: string[], sameAs?: Record<string, string> }
+const REF = JSON.parse(readFileSync(new URL('../core/reference/認定調査の選択肢.json', import.meta.url), 'utf8')) as {
+  sameMeaning: Record<string, string>, items: RefItem[], notInReference: { keys: string[] },
+}
+const norm = (s: string) => s.normalize('NFKC').replace(/\s/g, '')
+
+test('認定調査の項目の選択肢は、参考資料と同じ順に並ぶ（用紙の番号の意味）', () => {
+  const same = new Map(Object.entries(REF.sameMeaning).filter(([k]) => k !== '_about').map(([k, v]) => [norm(k), norm(v)]))
+  for (const it of REF.items) {
+    const f = BY_KEY.get(it.key)
+    assert.ok(f, `${it.key} がない`)
+    const target = it.sub ? subFieldsOf(f).find((s) => s.key === it.sub) : f
+    assert.ok(target, `${it.key}.${it.sub} がない`)
+    let ours = choicesOf(target).map(norm)
+    if (it.noneFirst) {
+      assert.equal(ours[0], 'ない', `${it.key}: 1 番目が「ない」でない`)
+      ours = ours.slice(1)
+    }
+    const per = new Map(Object.entries(it.sameAs ?? {}).map(([k, v]) => [norm(k), norm(v)]))
+    const theirs = it.choices.map((c) => per.get(norm(c)) ?? same.get(norm(c)) ?? norm(c))
+    assert.deepEqual(ours, theirs, `${it.key}（${it.name}）の選択肢の並びが参考資料と違う`)
+  }
+})
+
+test('認定調査の項目は、どれも参考資料にあるか、ないと分かっている', () => {
+  const known = new Set([...REF.items.map((i) => i.key), ...REF.notInReference.keys])
+  for (const k of known) assert.ok(BY_KEY.has(k), `${k} が fields.json にない`)
+  assert.deepEqual(FIELD_LIST.filter((f) => f.key.startsWith('survey.') && !known.has(f.key)).map((f) => f.key), [])
+})
