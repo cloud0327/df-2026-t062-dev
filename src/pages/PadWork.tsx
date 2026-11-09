@@ -101,7 +101,7 @@ export function PadWork({ clientId }: { clientId: string }) {
         )}
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
           {saved && <span role="status" style={{ fontSize: 15, fontWeight: 500, color: '#1F49B0' }}>保存しました</span>}
-          <button type="button" onClick={async () => { if (!await state.saveDocument()) return; setSaved(true); setSavedPages(new Set(pages.map((p) => p.no))) }} disabled={phase === 'writing'} style={{ fontFamily: "'Noto Sans JP',sans-serif", fontSize: 16, fontWeight: 700, borderRadius: 12, padding: '0 18px', minHeight: 48, cursor: 'pointer', border: '1px solid #1C2229', background: '#1C2229', color: '#FFFFFF', whiteSpace: 'nowrap' }}>書類を保存</button>
+          <button type="button" onClick={async () => { const ok = await state.saveDocument(); setSaved(ok); if (ok) setSavedPages(new Set(pages.map((p) => p.no))) }} disabled={phase === 'writing'} style={{ fontFamily: "'Noto Sans JP',sans-serif", fontSize: 16, fontWeight: 700, borderRadius: 12, padding: '0 18px', minHeight: 48, cursor: 'pointer', border: '1px solid #1C2229', background: '#1C2229', color: '#FFFFFF', whiteSpace: 'nowrap' }}>書類を保存</button>
         </div>
         {tocOpen && (
           <nav aria-label="ページ" style={{ position: 'absolute', left: 150, top: 64, width: 360, background: '#FFFFFF', borderRadius: 16, boxShadow: '0 12px 36px rgba(20,24,32,0.28)', padding: 8, display: 'flex', flexDirection: 'column' }}>
@@ -137,13 +137,17 @@ export function PadWork({ clientId }: { clientId: string }) {
       )}
       {recorder.phase === 'error' && (
         <div role="alert" className="strip" style={{ background: '#FDE8E7', color: '#A3261C' }}>
-          <div style={{ flex: '1 1 auto' }}>{recorder.error}。録音は iPad に残っています。電波のあるところで、もう一度開いてください。</div>
+          <div style={{ flex: '1 1 auto' }}>{recorder.error}。録音は iPad に残っています。通信状態を確認して再試行してください。</div>
+          <button type="button" onClick={recorder.retry} disabled={recorder.busy} className="tb">再試行</button>
           <button type="button" onClick={recorder.reset} style={{ font: 'inherit', fontSize: 15, fontWeight: 700, border: 0, background: 'transparent', color: '#A3261C', minHeight: 44 }}>閉じる</button>
         </div>
       )}
 
       <FieldConflicts state={state} />
       {state.error && <div role="alert" className="strip" style={{ background: '#FDE8E7', color: '#A3261C' }}>うまく送れませんでした（{state.error}）。</div>}
+      {recorder.phase === 'rec' && recorder.storageWarning && (
+        <div role="alert" className="strip" style={{ background: '#FFF4E5' }}>録音を端末に保存できていません。録音を止めるまで、この画面を開いたままにしてください。</div>
+      )}
       <div ref={scroller} onScroll={onScroll} style={{ flex: '1 1 auto', minHeight: 0, overflow: 'auto', padding: '16px 16px 150px', position: 'relative' }}>
         {isAdm && doc && (
           <div role="status" style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: '#FFF4E5', border: '1px solid #F0C78A', borderRadius: 12, padding: '12px 14px', fontSize: 15, lineHeight: 1.5, marginBottom: 12 }}>

@@ -21,6 +21,8 @@ let hasPdf = false
 let putFake: (path: string, data: Uint8Array) => Promise<void> = async () => {}
 const TOKEN = 'Bearer dev:kato@example.com'
 const OTHER = 'Bearer dev:other@example.com'
+let failNextEnqueue = false
+const enqueues = new Map<string, number>()
 
 const call = async (path: string, init: RequestInit & { token?: string } = {}) => {
   const res = await fetch(`${origin}${path}`, {
@@ -69,11 +71,21 @@ before(async () => {
   }
   putFake = async (path, data) => { await storage.writeOnce('forms', path, data, 'image/png') }
   const workerDeps = { db: async () => db, storage: () => storage, providers: async () => ({ stt: new f.FakeStt(), speakers: new f.FakeSpeakers(), writer: new f.FakeWriter() }) }
+  const queue = new LocalQueue((id) => runJob(workerDeps, id))
   const server = createApiServer({
     db: async () => db,
     verifier: () => new DevVerifier(),
     storage: () => storage,
-    queue: () => new LocalQueue((id) => runJob(workerDeps, id)),
+    queue: () => ({
+      async enqueue(id) {
+        if (failNextEnqueue) {
+          failNextEnqueue = false
+          throw new Error('queue unavailable')
+        }
+        enqueues.set(id, (enqueues.get(id) ?? 0) + 1)
+        await queue.enqueue(id)
+      },
+    }),
     devAuth: true,
   })
   server.listen(0, '127.0.0.1')
@@ -167,6 +179,57 @@ test('録音を送るとジョブが走り、AI が用紙に書く（ケアマ�
   const doc = (await call(`/api/documents/${docId}`)).body as { document: { fields: Record<string, { value: { name?: string }, by: string }> } }
   assert.equal(doc.document.fields.consulter.value.name, '自分で書いた')
   assert.equal(doc.document.fields['intake.method'].by, 'ai')
+})
+
+test('録音IDで送信を再開し、同時に完了を再試行してもジョブを一度だけ積む', { skip }, async () => {
+  const client = await call('/api/clients', { method: 'POST', body: JSON.stringify({ name: '録音復旧の検証' }) })
+  assert.equal(client.status, 201)
+  const path = `/api/clients/${client.body.id}/recordings/resumable`
+  const deviceRecordingId = crypto.randomUUID()
+  const start = (expiredUploadUrl?: string, token = TOKEN) => call(path, {
+    method: 'POST', token, body: JSON.stringify({ mime: 'audio/webm', deviceRecordingId, expiredUploadUrl }),
+  })
+  const [first, retry] = await Promise.all([start(), start()])
+  assert.equal(first.status, 201)
+  assert.equal(retry.status, 201)
+  assert.deepEqual(retry.body, first.body)
+  assert.equal((await start(undefined, OTHER)).status, 404)
+  const { recordingId, uploadUrl } = first.body as { recordingId: string, uploadUrl: string }
+  const put = (url: string, range: string, data?: Uint8Array<ArrayBuffer>) =>
+    fetch(`${origin}${url}`, { method: 'PUT', headers: { 'Content-Range': range }, body: data, redirect: 'manual' })
+  const complete = (bytes = 4) => call(`/api/recordings/${recordingId}/complete`, {
+    method: 'POST', body: JSON.stringify({ durationMs: 1000, bytes }),
+  })
+
+  assert.equal((await put(uploadUrl, 'bytes 0-1/4', new Uint8Array([1, 2]))).status, 308)
+  assert.equal((await complete()).status, 409)
+  assert.equal((await put(uploadUrl, 'bytes */4')).headers.get('Range'), 'bytes=0-1')
+  const renewed = await start(uploadUrl)
+  assert.equal(renewed.status, 201)
+  assert.equal(renewed.body.recordingId, recordingId)
+  assert.notEqual(renewed.body.uploadUrl, uploadUrl)
+  assert.deepEqual((await start(uploadUrl)).body, renewed.body)
+  assert.equal((await put(renewed.body.uploadUrl, 'bytes 0-3/4', new Uint8Array([1, 2, 3, 4]))).status, 200)
+  assert.equal((await put(uploadUrl, 'bytes 2-3/4', new Uint8Array([9, 9]))).status, 200)
+  assert.deepEqual((await start()).body, { recordingId, uploadUrl: null })
+  assert.equal((await complete(5)).status, 409)
+
+  failNextEnqueue = true
+  assert.equal((await complete()).status, 500)
+  const [done, repeated] = await Promise.all([complete(), complete()])
+  assert.equal(done.status, 202)
+  assert.equal(repeated.status, 202)
+  assert.equal(repeated.body.jobId, done.body.jobId)
+  assert.equal(enqueues.get(done.body.jobId), 1)
+  const list = await call(`/api/clients/${client.body.id}/jobs`)
+  assert.equal(list.body.jobs.length, 1)
+  assert.deepEqual((await start()).body, { recordingId, uploadUrl: null })
+  for (let i = 0; i < 50; i++) {
+    const jobs = (await call(`/api/clients/${client.body.id}/jobs`)).body.jobs
+    if (jobs[0].status === 'succeeded') return
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  assert.fail('再試行で投入したジョブが完了しませんでした')
 })
 
 test('様式の版は、その事業所が見てよいものだけ読める。中身はブラウザが覚えてよい（ETag）', { skip }, async () => {

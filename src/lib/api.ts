@@ -68,8 +68,10 @@ export const api = {
   save: (id: string, body: { scope: 'document' } | { scope: 'page', page: number } | { scope: 'hunk', key: string, hunkIndex: number }) =>
     req<{ rev: number, document: DocumentView }>('POST', `/api/documents/${id}/save`, body),
   jobs: (clientId: string) => req<{ jobs: JobView[] }>('GET', `/api/clients/${clientId}/jobs`),
-  startRecording: (clientId: string, mime: string) => req<{ recordingId: string, uploadUrl: string }>('POST', `/api/clients/${clientId}/recordings`, { mime }),
-  completeRecording: (id: string, durationMs: number | null) => req<{ jobId: string, status: string }>('POST', `/api/recordings/${id}/complete`, { durationMs }),
+  startRecording: (clientId: string, mime: string, deviceRecordingId: string, expiredUploadUrl?: string) =>
+    req<{ recordingId: string, uploadUrl: string | null }>('POST', `/api/clients/${clientId}/recordings/resumable`, { mime, deviceRecordingId, expiredUploadUrl }),
+  completeRecording: (id: string, durationMs: number, bytes: number) =>
+    req<{ jobId: string, status: string }>('POST', `/api/recordings/${id}/complete`, { durationMs, bytes }),
   async pdf(id: string): Promise<Blob> {
     const token = await tokenSource()
     const res = await fetch(`/api/documents/${id}/pdf`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
