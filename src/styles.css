@@ -52,7 +52,7 @@ a:hover { color: #1A3E99; }
 .ov { position: absolute; box-sizing: border-box; pointer-events: none; }
 .fresh {
   background: rgba(240, 160, 64, 0.16);
-  border: 2px dashed #D97706;
+  border: 1px solid rgba(232, 145, 45, 0.7);
   border-radius: 2px;
 }
 .chg {

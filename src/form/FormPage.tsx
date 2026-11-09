@@ -8,8 +8,8 @@ import { fsz, pc, pos, W, H, type PageLayout, type SlotView } from './layout.ts'
 
 const ORANGE: CSSProperties = {
   background: 'rgba(240,160,64,0.18)',
-  outline: '2px dashed #D97706',
-  outlineOffset: '-2px',
+  outline: '1px solid rgba(232,145,45,0.7)',
+  outlineOffset: '-1px',
 }
 const YELLOW: CSSProperties = {
   background: 'rgba(255,196,0,0.35)',
