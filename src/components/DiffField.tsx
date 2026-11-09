@@ -37,6 +37,7 @@ function sentence(t: string, s: number, e: number) {
 
 const SANS = "'Noto Sans JP',sans-serif"
 const SERIF = "'Noto Serif JP','Hiragino Mincho ProN','Yu Mincho',serif"
+const DIFF_ROW_GRID: CSSProperties = { display: 'grid', gridTemplateColumns: '1.3em max-content minmax(0,1fr)', gap: 6, padding: '4px 10px', fontFamily: SERIF, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }
 
 export function DiffField(p: Props) {
   const text = p.after
@@ -138,14 +139,14 @@ export function DiffField(p: Props) {
                 </span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', fontSize: t ? 17 : 13.5 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1.3em 6.2em minmax(0,1fr)', gap: 6, padding: '4px 10px', fontFamily: SERIF, background: '#FBE3E1', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                <div style={{ ...DIFF_ROW_GRID, background: '#FBE3E1' }}>
                   <span style={{ fontFamily: SANS, fontWeight: 700, color: '#B02A22' }}>−</span>
                   <span style={{ fontFamily: SANS, fontSize: 11, color: '#5B6672', paddingTop: 3 }}>前の文</span>
                   <span>{(pop.ctx.before + pop.h.del + pop.ctx.after).trim()
                     ? <><span>{pop.ctx.before}</span><span style={{ textDecoration: 'line-through', textDecorationThickness: 1, background: 'rgba(176,42,34,0.22)', color: '#B02A22' }}>{pop.h.del}</span><span>{pop.ctx.after}</span></>
                     : <span style={{ color: '#5B6672', fontFamily: SANS, fontSize: 12 }}>（なし）</span>}</span>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1.3em 6.2em minmax(0,1fr)', gap: 6, padding: '4px 10px', fontFamily: SERIF, background: '#DCF2E4', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                <div style={{ ...DIFF_ROW_GRID, background: '#DCF2E4' }}>
                   <span style={{ fontFamily: SANS, fontWeight: 700, color: '#17703F' }}>＋</span>
                   <span style={{ fontFamily: SANS, fontSize: 11, color: '#5B6672', paddingTop: 3 }}>{pop.fixed ? '直した文' : 'AI の文'}</span>
                   <span>{(pop.ctx.before + pop.now + pop.ctx.after).trim()
