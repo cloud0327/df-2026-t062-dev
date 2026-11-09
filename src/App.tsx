@@ -59,7 +59,7 @@ function Shell() {
     )
   }
   if (!staff) return null
-  if (route.name === 'client') return device === 'pad' ? <PadWork clientId={route.id} /> : <PcWork clientId={route.id} staffName={staff.name} />
+  if (route.name === 'client') return device === 'pad' ? <PadWork clientId={route.id} /> : <PcWork key={route.id} clientId={route.id} staffName={staff.name} />
   return device === 'pad' ? <PadList staffName={staff.name} /> : <PcList staffName={staff.name} />
 }
 

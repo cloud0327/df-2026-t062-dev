@@ -22,6 +22,8 @@ export interface SurveyPreview {
   fileName: string
   sha256: string
   identity: string
+  recordedOn: string | null
+  readAt: string
   candidates: Candidate[]
 }
 
@@ -54,13 +56,24 @@ function crop(canvas: HTMLCanvasElement, x: number, y: number, w: number, h: num
   return out.toDataURL('image/png')
 }
 
-export async function readSurvey(file: File): Promise<SurveyPreview> {
+export type SurveyStep = 'prepare' | 'read' | 'map'
+
+export async function readSurvey(file: File, signal?: AbortSignal, onStep?: (step: SurveyStep) => void): Promise<SurveyPreview> {
+  signal?.throwIfAborted()
+  onStep?.('prepare')
   if (file.size > MAX_BYTES) throw new Error('10 MB以下のPDFを選んでください。')
   const data = new Uint8Array(await file.arrayBuffer())
+  signal?.throwIfAborted()
   if (new TextDecoder().decode(data.subarray(0, 5)) !== '%PDF-') throw new Error('PDFを選んでください。')
   const digest = await crypto.subtle.digest('SHA-256', data)
   const sha256 = Array.from(new Uint8Array(digest), (v) => v.toString(16).padStart(2, '0')).join('')
+  signal?.throwIfAborted()
+  onStep?.('read')
   const task = getDocument({ data, useSystemFonts: true, maxImageSize: 10_000_000 })
+  let destroying: Promise<void> | undefined
+  const destroy = () => destroying ??= task.destroy()
+  const abort = () => { void destroy().catch(() => {}) }
+  signal?.addEventListener('abort', abort, { once: true })
   try {
     const pdf = await task.promise
     if (pdf.numPages < 2 || pdf.numPages > 5) throw new Error('表面と裏面を含む広島市版の認定調査票PDFを選んでください。')
@@ -77,6 +90,8 @@ export async function readSurvey(file: File): Promise<SurveyPreview> {
     const image = context.getImageData(0, 0, canvas.width, canvas.height)
 
     const notes = pdf.numPages >= 3 ? await textOn(await pdf.getPage(3)) : []
+    signal?.throwIfAborted()
+    onStep?.('map')
     const candidates = SURVEY_IMPORT_KEYS.map((key, i): Candidate => {
       const anchors = secondText.filter((t) => t.x > 12 && t.x < 65 && t.top > 60 && t.top < 220 && compact(t.text) === labels[i])
       if (anchors.length !== 1) throw new Error('生活機能の欄を確認できませんでした。')
@@ -94,8 +109,24 @@ export async function readSurvey(file: File): Promise<SurveyPreview> {
       ).map((t) => t.text).join('').trim() : ''
       return { key, choice, reason, note: note || undefined, preview: crop(canvas, 0, y - 13 * SCALE, canvas.width / 2.1, 17 * SCALE) }
     })
-    return { fileName: file.name, sha256, identity, candidates }
+    return { fileName: file.name, sha256, identity, recordedOn: surveyDate(firstText), readAt: new Date().toISOString(), candidates }
   } finally {
-    await task.destroy()
+    signal?.removeEventListener('abort', abort)
+    await destroy()
   }
+}
+
+// 調査実施日欄のテキストだけを読む。画像の記入や判別できない日付は不明のままにする。
+function surveyDate(items: Awaited<ReturnType<typeof textOn>>): string | null {
+  const label = items.find((item) => compact(item.text) === '調査実施日')
+  if (!label) return null
+  const text = compact(items.filter(({ x, top }) => x >= label.x && x < 195 && top > label.top && top < label.top + 23)
+    .sort((a, b) => a.x - b.x).map((item) => item.text).join(''))
+  const match = /^(令和)?(元|\d{1,4})年(\d{1,2})月(\d{1,2})日$/.exec(text)
+  if (!match) return null
+  const year = match[1] ? 2018 + (match[2] === '元' ? 1 : Number(match[2])) : Number(match[2])
+  const month = Number(match[3]), day = Number(match[4])
+  if (year < 1900 || year > 9999) return null
+  const date = new Date(Date.UTC(year, month - 1, day))
+  return date.getUTCMonth() === month - 1 && date.getUTCDate() === day ? date.toISOString().slice(0, 10) : null
 }

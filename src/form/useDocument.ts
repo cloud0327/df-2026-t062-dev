@@ -496,6 +496,11 @@ export function useDocument(docId: string | undefined) {
     hasLocalEdits: slotQueue.length + fieldQueue.size + conflicts.size + drafts.size + eraDrafts.size > 0,
     hasPdf: assets?.hasPdf ?? false,
     edit, type, commit, display, reasons, setValue, flush, reload: load, diffOf, imageOf, imageFailed,
+    adoptSurvey: async (body: Parameters<typeof api.importSurvey>[1]) => {
+      if (!docId || active.current !== docId) throw new Error('用紙が切り替わりました。')
+      const result = await api.importSurvey(docId, body)
+      publish(result.document)
+    },
     savePage: (no: number) => doSave({ scope: 'page', page: no }),
     saveDocument: () => doSave({ scope: 'document' }),
     saveHunk: (key: string, hunkIndex: number) => doSave({ scope: 'hunk', key, hunkIndex }),

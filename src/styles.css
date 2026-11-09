@@ -41,6 +41,8 @@ a:hover { color: #1A3E99; }
 .pc .mi { font: inherit; font-size: 14px; text-align: left; border: 0; background: transparent; border-radius: 8px; padding: 8px 10px; cursor: pointer; display: flex; flex-direction: column; gap: 1px; color: #1F2430; }
 .pc .mi:hover { background: #F4F6FA; }
 .pc .mi-s { font-size: 12px; color: #5A6270; }
+.pc .mi:disabled { cursor: not-allowed; color: #8A919C; }
+.pc .mi:disabled:hover { background: transparent; }
 .pc .savebtn { font-family: 'Noto Sans JP', sans-serif; font-size: 13px; border-radius: 4px; padding: 5px 14px; cursor: pointer; border: 1px solid #1C2229; background: #1C2229; color: #FFFFFF; line-height: 1.6; white-space: nowrap; }
 .pc .pgsave { font-family: 'Noto Sans JP', sans-serif; font-size: 11px; border-radius: 4px; padding: 0 8px; cursor: pointer; border: 1px solid #1C2229; background: #1C2229; color: #FFFFFF; line-height: 1.7; white-space: nowrap; }
 
@@ -92,6 +94,8 @@ a:hover { color: #1A3E99; }
 .pad .sym { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 8px; background: #F2F4F7; font-size: 22px; }
 .pad .toc { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 6px 14px; border-radius: 10px; text-decoration: none; color: #1F2430; font-size: 17px; border: 0; background: transparent; font-family: inherit; text-align: left; cursor: pointer; width: 100%; }
 .pad .toc:hover { background: #F4F6FA; color: #1F2430; }
+.pad .toc:disabled { cursor: not-allowed; color: #8A919C; }
+.pad .toc:disabled:hover { background: transparent; color: #8A919C; }
 .pad .toc-on { background: #EAF0FC; font-weight: 700; }
 .pad .pwrap { margin-bottom: 20px; }
 .pad .plabel { height: 44px; display: flex; align-items: center; font-size: 13px; color: #5A6270; }
@@ -157,3 +161,6 @@ a:hover { color: #1A3E99; }
   .pc-work-layout nav { max-height: 150px; }
   .pc-work-layout .assistant-panel { grid-column: 1; }
 }
+
+/* 未対応の書類の札 */
+.coming-soon { align-self: flex-start; display: inline-block; margin-top: 2px; padding: 1px 8px; border-radius: 999px; background: #EEF0F3; color: #5A6270; font-weight: 600; }
