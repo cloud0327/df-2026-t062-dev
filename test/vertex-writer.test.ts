@@ -5,7 +5,7 @@ import { BUNDLES, SUMMARY, bundleOf, groupByBundle } from '../worker/vertex/bund
 import { candidateFields, needsDocument } from '../worker/vertex/common.ts'
 import { geminiFactory, type AskMeta, type Llm } from '../worker/vertex/gemini.ts'
 import { speakerAssigner } from '../worker/vertex/speakers.ts'
-import { mapLimit, sheetWriter } from '../worker/vertex/writer.ts'
+import { fieldSchema, mapLimit, sheetWriter, updateSchema } from '../worker/vertex/writer.ts'
 
 const specs = candidateFields()
 // 書類がないときに書く欄（会話から書ける欄）を、まとまりごとに
@@ -36,13 +36,26 @@ const writeText: Handler = (_p, schema, m) => {
   return {}
 }
 
-test('23 項目のまとまり: AI が書く欄のある項目は、どれか 1 つのまとまりにだけ入る。まとまりは 6 つまで', () => {
+/** 答えの形（JSON Schema）の中の項目（properties）の数。入れ子も数える */
+const schemaProps = (s: any): number => !s || typeof s !== 'object' ? 0
+  : (s.properties ? Object.keys(s.properties).length + Object.values(s.properties).reduce((a: number, v) => a + schemaProps(v), 0) : 0)
+    + (s.items ? schemaProps(s.items) : 0) + (s.anyOf ? s.anyOf.reduce((a: number, v: any) => a + schemaProps(v), 0) : 0)
+
+test('23 項目のまとまり: AI が書く欄のある項目は、どれか 1 つのまとまりにだけ入る。まとまりは 7 つまで', () => {
   for (const no of new Set(specs.map((s) => s.item23 || 0))) {
     assert.equal([...BUNDLES, SUMMARY].filter((b) => b.items.includes(no)).length, 1, `23 項目の ${no}`)
   }
-  assert.ok(BUNDLES.length <= 6)
+  assert.ok(BUNDLES.length <= 7)
   // まとまりに分けても、欄は 1 つも落ちず、増えもしない
   assert.deepEqual([...groupByBundle(specs).values()].flat().map((s) => s.key).sort(), specs.map((s) => s.key).sort())
+})
+
+test('23 項目のまとまり: 答えの形の中の項目は、欄の値・2 回目の直しのどちらも 157 以下（Gemini が受け付けた大きさ）', () => {
+  // 2026-11-10 に gemini-3.8-flash で確かめた: 157 までは受け付け、161 からは 400（Request contains an invalid argument）で断られる
+  for (const [id, ss] of groupByBundle(specs)) {
+    assert.ok(schemaProps(fieldSchema(ss)) <= 157, `${id}: 欄の値 ${schemaProps(fieldSchema(ss))}`)
+    assert.ok(schemaProps(updateSchema(ss)) <= 157, `${id}: 2 回目の直し ${schemaProps(updateSchema(ss))}`)
+  }
 })
 
 test('1 回目: 書く → 読み直しで根拠のない文を落とす。1 つのまとまりの呼び出しが失敗しても残りは返す', async () => {
@@ -170,6 +183,20 @@ test('Gemini: 失敗したらやり直し、schema を断られたら schema な
   assert.equal(u.cachedTokens, 600_000)
   // キャッシュに当たらなかった入力 400,010 は 50 円、当たった 600,000 は 5 円、出力と思考は 400 円（いずれも 100 万トークンあたり）
   assert.equal(u.yen, (400_010 * 50 + 600_000 * 5 + 1_000_001 * 400) / 1e6)
+})
+
+test('Gemini: 400（INVALID_ARGUMENT）は文面に schema がなくても、schema なしで聞き直す', async () => {
+  const schemas: (unknown | null)[] = []
+  const client = {
+    async generate({ schema }: { schema: unknown | null }) {
+      schemas.push(schema)
+      if (schema) throw Object.assign(new Error('{"error":{"code":400,"message":"Request contains an invalid argument.","status":"INVALID_ARGUMENT"}}'), { status: 400 })
+      return { text: '{"ok":true}', prompt: 1, output: 1, thinking: 0, cached: 0 }
+    },
+  }
+  const out = await geminiFactory({}, { client, sleep: async () => {} })().ask('p', { type: 'object' }, { step: 't' })
+  assert.deepEqual(out, { ok: true })
+  assert.deepEqual(schemas, [{ type: 'object' }, null])
 })
 
 test('Gemini: 思考の深さは GEMINI_THINKING_LEVEL で変えられ、DEFAULT ならモデルの既定に任せる。キャッシュの単価の既定は入力の 1 割', async () => {

@@ -91,6 +91,15 @@ export function fieldSchema(specs: Spec[], citeKey = 'from') {
   return { type: 'object', properties: props, required: specs.map((s) => s.key) }
 }
 
+/** 2 回目の直しの答えの形。直す欄の名前を changed に並べさせる（欄ごとに changed を持たせると、形が大きくなり Gemini が受け付けない） */
+export function updateSchema(specs: Spec[]) {
+  const props: Record<string, unknown> = { changed: { type: 'array', items: { type: 'string', enum: specs.map((s) => s.key) } } }
+  for (const s of specs) {
+    props[s.key] = { type: 'object', properties: { value: valueSchema(s), from: { type: 'array', items: { type: 'string' } } }, required: ['value', 'from'] }
+  }
+  return { type: 'object', properties: props, required: ['changed'] }
+}
+
 /** 同時に動かす数を絞って、順番どおりに結果を返す */
 export async function mapLimit<T, R>(items: T[], limit: number, fn: (x: T) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length)
@@ -259,15 +268,10 @@ async function update(ctx: Ctx, id: string, specs: Spec[], fields: Record<string
     if (cur?.cite.length) line += `\n- 今の根拠: ${cur.cite.join(', ')}`
     return line
   })
-  // 直す欄の名前を changed に並べさせる（欄ごとに changed を持たせると、欄の多い項目で Gemini が形を受け付けない）
-  const props: Record<string, unknown> = { changed: { type: 'array', items: { type: 'string', enum: specs.map((s) => s.key) } } }
-  for (const s of specs) {
-    props[s.key] = { type: 'object', properties: { value: valueSchema(s), from: { type: 'array', items: { type: 'string' } } }, required: ['value', 'from'] }
-  }
   const prompt = head + P.fill(P.UPDATE, {
     visit: visitHead(visit), rules: P.WRITE_RULES, column_rules: P.COLUMN_RULES, name: bundleName(id), fields: listing.join('\n\n'),
   })
-  return ctx.llm.ask(prompt, { type: 'object', properties: props, required: ['changed'] }, { step: '2回目の直し', group: id })
+  return ctx.llm.ask(prompt, updateSchema(specs), { step: '2回目の直し', group: id })
 }
 
 export interface WriterOptions {

@@ -103,7 +103,9 @@ export function geminiFactory(env: NodeJS.ProcessEnv, opts: GeminiOptions = {}):
           // JSON の崩れも API の失敗も、やり直す。文面は中身が入りうるのでログに出さない
           const msg = String((e as Error)?.message ?? '').replace(/\n/g, ' ')
           log({ msg: 'gemini', step: meta.step, group: meta.group ?? null, ok: false, attempt, schema: useSchema, seconds: (Date.now() - t0) / 1000, error: (e as Error)?.name ?? 'Error', status: (e as { status?: number })?.status ?? null })
-          if (msg.includes('INVALID_ARGUMENT') && msg.toLowerCase().includes('schema')) useSchema = false
+          // 400（INVALID_ARGUMENT）は、形が大きすぎるときも文面が「Request contains an invalid argument.」だけになる。
+          // 同じ形で聞き直しても通らないので、schema なしで聞き直す
+          if ((e as { status?: number })?.status === 400 || msg.includes('INVALID_ARGUMENT')) useSchema = false
           if (attempt === retries) throw e
           await sleep(Math.min(60, 4 * 2 ** attempt) * 1000)
         }
