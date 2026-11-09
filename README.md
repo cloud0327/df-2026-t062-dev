@@ -43,22 +43,22 @@ Cloud Scheduler（5 分ごと）──▶ worker の見回り
 
 ## ローカルで動かす
 
-Node.js は `.nvmrc` の版を使います。最初に `npm ci` を実行します。
+Node.js は `.nvmrc` の版を使います。最初に `npm ci` を実行します。設定は `.env` に書きます（見本は `.env.example`。`.env` は git に入れません）。`npm run dev:api`・`db:*`・`forms:*` は `.env` を自動で読むので、毎回環境変数を指定しなくて構いません（`npm test` は読みません）。
 
 ```sh
+cp .env.example .env                       # 最初に 1 回。DB・ログインのやり方・AI の種類を書く
 docker compose up -d                       # PostgreSQL（localhost:54329）
-export DATABASE_URL=postgres://postgres:postgres@localhost:54329/careman
-npm run db:migrate                         # 表を作る
-npm run db:seed                            # 様式（forms/seed）を登録し、見本のデータを入れる（架空の人と、公開の演習シナリオ）
+npm run db:migrate                         # 表を作り、様式（forms/seed）を登録する
+npm run db:seed                            # 見本のデータ（架空の人と、公開の演習シナリオ）
 npm run forms:assets                       # 様式の元の PDF（全社協の公式の URL から取る）とページの画像を、置き場（.data/storage/forms）に入れる（pdftoppm が要る）
 
-AUTH_MODE=dev npm run dev:api              # ターミナル 1: api（http://127.0.0.1:8787）
-npm run dev                                # ターミナル 2: 画面（Vite）
+npm run dev:api                            # ターミナル 1: api（http://127.0.0.1:8787）
+npm run dev                                # ターミナル 2: 画面（http://localhost:5173）
 ```
 
-- 画面を開くとログイン画面になります。ローカルでは、メールアドレス `kato@example.com` だけで入れます（`AUTH_MODE=dev` のときだけ）。
-- iPad の画面を PC で見るときは、URL に `?ui=pad` を付けます（`?ui=pc` で戻る）。
-- ローカルでは、録音の置き場は `.data/storage`、ジョブは api と同じプロセスで動きます。AI は既定で `AI_PROVIDER=fake`（演習シナリオの正解を返す。費用なし）です。
+- 画面を開くとログイン画面になります。ローカルでは、メールアドレス `kato@example.com` だけで入れます（`.env` の `AUTH_MODE=dev` のときだけ）。
+- iPad の画面を PC で見るときは、URL に `?ui=pad` を付けます（`?ui=pc` で戻る）。録音のボタンは iPad の画面にあります。
+- ローカルでは、録音の置き場は `.data/storage`、ジョブは api と同じプロセスで動きます。AI は `.env.example` のままなら `AI_PROVIDER=fake`（演習シナリオの正解を返す。費用なし）です。
 
 ### 見本のデータ
 
@@ -70,9 +70,11 @@ npm run dev                                # ターミナル 2: 画面（Vite）
 
 ### 本物の AI で動かす（費用がかかる）
 
+`gcloud auth application-default login` でログインし、`.env` を次のようにしてから `npm run dev:api` を起動し直します。録音するたびに、文字起こし（Chirp 3、東京）と Gemini（`gemini-3.8-flash`、global）の費用がかかります（30 分の面談で 100〜150 円ほどの見込み）。
+
 ```sh
-gcloud auth application-default login
-GOOGLE_CLOUD_PROJECT=<プロジェクト> AI_PROVIDER=vertex npm run dev:api
+AI_PROVIDER=vertex
+GOOGLE_CLOUD_PROJECT=<プロジェクト>
 ```
 
 演習シナリオだけで 2 層改を試すときは `node eval/run-writer.ts --out <フォルダ>` を使い、`python3 eval/bench/bench.py score --gold eval/scenario/gold --submission <フォルダ>` で採点します。**実在の方の録音は、Google Cloud の外のサービスに送らないでください。**

@@ -8,21 +8,21 @@
   },
   "scripts": {
     "dev": "vite",
-    "dev:api": "node --watch api/index.ts",
-    "dev:worker": "node --watch worker/index.ts",
+    "dev:api": "node --env-file-if-exists=.env --watch api/index.ts",
+    "dev:worker": "node --env-file-if-exists=.env --watch worker/index.ts",
     "start:api": "node api/index.ts",
     "start:worker": "node worker/index.ts",
-    "db:migrate": "node db/migrate.ts",
-    "db:seed": "node db/seed.ts",
+    "db:migrate": "node --env-file-if-exists=.env db/migrate.ts --forms",
+    "db:seed": "node --env-file-if-exists=.env db/seed.ts",
     "forms:check": "node forms/admin/check.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --test",
     "build": "vite build && node scripts/write-version.mjs",
     "preview": "vite preview",
     "forms:fetch": "node forms/tools/scripts/fetch.mjs",
-    "forms:seed": "node forms/admin/seed.ts",
-    "forms:assets": "node forms/admin/assets.ts",
-    "forms:rebase": "node forms/admin/rebase.ts"
+    "forms:seed": "node --env-file-if-exists=.env forms/admin/seed.ts",
+    "forms:assets": "node --env-file-if-exists=.env forms/admin/assets.ts",
+    "forms:rebase": "node --env-file-if-exists=.env forms/admin/rebase.ts"
   },
   "devDependencies": {
     "@types/node": "24.19.2",
