@@ -2,13 +2,35 @@
   "compilerOptions": {
     "target": "ESNext",
     "module": "NodeNext",
-    "lib": ["ESNext", "DOM"],
-    "types": ["node", "vite/client"],
+    "moduleResolution": "NodeNext",
+    "lib": [
+      "ESNext",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "types": [
+      "node",
+      "vite/client"
+    ],
+    "jsx": "react-jsx",
     "strict": true,
     "noEmit": true,
+    "allowJs": true,
+    "checkJs": false,
+    "resolveJsonModule": true,
     "allowImportingTsExtensions": true,
     "erasableSyntaxOnly": true,
-    "verbatimModuleSyntax": true
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true
   },
-  "include": ["api", "src", "test", "vite.config.ts"]
+  "include": [
+    "api",
+    "core",
+    "db",
+    "forms/index.ts",
+    "src",
+    "test",
+    "worker",
+    "vite.config.ts"
+  ]
 }

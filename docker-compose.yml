@@ -1,0 +1,27 @@
+# ローカル開発用の PostgreSQL。
+#   docker compose up -d
+#   export DATABASE_URL=postgres://postgres:postgres@127.0.0.1:54329/careman
+#   npm run db:migrate
+# 認証はエミュレーターを使わず AUTH_MODE=dev で動かす。
+# CI の services: postgres と同じメジャーバージョン（17）に揃える。
+services:
+  postgres:
+    image: postgres:17
+    container_name: t062-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: careman
+    ports:
+      # 手元の他の PostgreSQL（5432）と衝突しないように 54329 を使い、外には公開しない
+      - '127.0.0.1:54329:5432'
+    volumes:
+      - t062-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d careman']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  t062-pgdata:

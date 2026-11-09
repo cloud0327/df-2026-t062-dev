@@ -1,3 +1,17 @@
+# API と worker で同じイメージを使う。起動のコマンドだけが違う:
+#   API:    node api/index.ts（既定）
+#   worker: node worker/index.ts（Cloud Run の command で上書きする）
+# サーバーのコードはビルドしない。Node.js が .ts を直接実行する。
+
+# --- 本番用の依存だけを入れる ---
+FROM node:24.22.2-alpine AS deps
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --no-audit --no-fund
+
+# --- 実行用のイメージ ---
 FROM node:24.22.2-alpine
 
 ENV NODE_ENV=production
@@ -6,8 +20,24 @@ ENV PORT=8080
 
 WORKDIR /app
 
-# Current API uses only Node.js built-ins and native erasable TypeScript.
+COPY --chown=node:node package.json ./
+COPY --chown=node:node --from=deps /app/node_modules ./node_modules
+
+# 実行に要るファイルだけを入れる。layout.json・dist・docs・eval/bench などは .dockerignore で除く。
 COPY --chown=node:node api/ ./api/
+COPY --chown=node:node core/ ./core/
+COPY --chown=node:node db/ ./db/
+COPY --chown=node:node worker/ ./worker/
+# 様式は DB の版を使う。forms/seed（登録する様式のデータ）と forms/admin（npm run forms:seed・forms:rebase・forms:check）だけを入れる。
+# 様式を作る道具（forms/tools）と元の PDF は入れない（PDF とページの画像は非公開の置き場）
+COPY --chown=node:node forms/seed/ ./forms/seed/
+COPY --chown=node:node forms/admin/ ./forms/admin/
+COPY --chown=node:node forms/fonts/ ./forms/fonts/
+# db/seed.ts（demo 環境の見本のデータ）が読む架空の利用者
+COPY --chown=node:node forms/samples/ ./forms/samples/
+# AI_PROVIDER=fake のときに worker が読む公開の演習シナリオ（db/seed.ts も使う）
+COPY --chown=node:node eval/scenario/原本.json ./eval/scenario/原本.json
+COPY --chown=node:node eval/scenario/gold/用紙/ ./eval/scenario/gold/用紙/
 
 USER node
 

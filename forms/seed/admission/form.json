@@ -1,0 +1,18 @@
+{
+ "_about": "様式の情報。npm run forms:seed が、この様式（全事業所用）の版として DB に入れる。元の PDF は公開されていない地域の版なので、手元にあるときだけ npm run forms:assets で置き場に入れる",
+ "kind": "admission",
+ "name": "入院時情報提供書",
+ "title": "入院時情報提供書（地域の連携会議の版、2018.10）",
+ "publisher": "地域の医療・介護の連携会議",
+ "sourceUrl": null,
+ "basePdfSha256": "b88c8698bff3a387890c61a05ec78ee5b86abd41b662bb3206d529252a0380cc",
+ "pages": [
+  {
+   "no": 1,
+   "pdfIndex": 0,
+   "title": "入院時情報提供書",
+   "width": 210,
+   "height": 297
+  }
+ ]
+}
