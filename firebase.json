@@ -9,6 +9,24 @@
       {
         "source": "/api/health.json",
         "headers": [{ "key": "Cache-Control", "value": "no-store" }]
+      },
+      {
+        "source": "{/,/index.html}",
+        "headers": [{ "key": "Cache-Control", "value": "no-store" }]
+      },
+      {
+        "source": "/forms/**",
+        "headers": [{ "key": "Cache-Control", "value": "public, max-age=86400" }]
+      }
+    ],
+    "rewrites": [
+      {
+        "source": "/api/**",
+        "run": { "serviceId": "t062-api", "region": "asia-northeast1" }
+      },
+      {
+        "source": "**",
+        "destination": "/index.html"
       }
     ]
   }

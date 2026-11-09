@@ -60,6 +60,8 @@ jobs:
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       GCP_REGION: ${{ vars.GCP_REGION }}
       CLOUD_RUN_SERVICE: ${{ vars.CLOUD_RUN_SERVICE }}
+      CLOUD_RUN_WORKER_SERVICE: ${{ vars.CLOUD_RUN_WORKER_SERVICE }}
+      CLOUD_RUN_MIGRATE_JOB: ${{ vars.CLOUD_RUN_MIGRATE_JOB }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -75,6 +77,8 @@ jobs:
           [[ "$GCP_PROJECT_ID" =~ ^[a-z][a-z0-9-]{4,28}[a-z0-9]$ ]]
           [[ "$GCP_REGION" =~ ^[a-z][a-z0-9-]+[0-9]$ ]]
           [[ "$CLOUD_RUN_SERVICE" =~ ^[a-z]([a-z0-9-]{0,47}[a-z0-9])?$ ]]
+          [[ "$CLOUD_RUN_WORKER_SERVICE" =~ ^[a-z]([a-z0-9-]{0,47}[a-z0-9])?$ ]]
+          [[ "$CLOUD_RUN_MIGRATE_JOB" =~ ^[a-z]([a-z0-9-]{0,47}[a-z0-9])?$ ]]
       - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
           project_id: ${{ vars.GCP_PROJECT_ID }}
@@ -98,6 +102,36 @@ jobs:
           digest="$(gcloud artifacts docker images describe "$tagged" --format='value(image_summary.digest)')"
           [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
           printf 'ref=%s@%s\n' "$image" "$digest" >> "$GITHUB_OUTPUT"
+      # 1. DB 移行。同じイメージの node db/migrate.ts を Cloud Run ジョブで流す。失敗したらここで止まり、何も切り替わらない
+      - name: Migrate the database
+        env:
+          IMAGE_BY_DIGEST: ${{ steps.image.outputs.ref }}
+        run: bash scripts/release-cloud-run.sh migrate
+      # 2. worker に同じイメージを入れ、/healthz を確かめる。失敗したら前のリビジョンに戻して止まる
+      - name: Deploy worker
+        id: worker
+        env:
+          IMAGE_BY_DIGEST: ${{ steps.image.outputs.ref }}
+        run: bash scripts/release-cloud-run.sh worker-deploy
+      - name: Issue a worker identity token
+        id: worker_probe
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+          token_format: id_token
+          id_token_audience: ${{ steps.worker.outputs.worker_url }}
+          id_token_include_email: true
+          create_credentials_file: false
+          export_environment_variables: false
+      - name: Verify worker
+        env:
+          WORKER_ID_TOKEN: ${{ steps.worker_probe.outputs.id_token }}
+          WORKER_URL: ${{ steps.worker.outputs.worker_url }}
+          WORKER_PREVIOUS_REVISION: ${{ steps.worker.outputs.worker_previous }}
+        run: bash scripts/release-cloud-run.sh worker-verify
+      # 3. api。候補を作って確かめてから 100% に切り替える
       - name: Stage candidate without traffic
         id: stage
         env:

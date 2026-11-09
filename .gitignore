@@ -13,3 +13,16 @@ gha-creds-*.json
 .firebase/
 *.log
 .DS_Store
+
+# Local data (storage emulation)
+.data/
+__pycache__/
+*.pyc
+
+# 様式の元の PDF・そこから作ったページの画像と座標データは、公開リポジトリに入れない（利用条件のため）。
+# アセスメントは npm run forms:fetch で全社協の公式の URL から取ってくる。サービスへは npm run forms:assets で非公開の置き場に入れる。
+*.pdf
+!forms/fonts/*.pdf
+forms/tools/templates/*/layout.json
+forms/tools/out/
+public/forms/

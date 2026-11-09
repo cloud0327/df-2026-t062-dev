@@ -14,7 +14,22 @@ jobs:
   verify:
     name: Verify
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
+    # DB を通すテスト（test/api.test.ts）のための PostgreSQL。本番の Cloud SQL と同じ 17 にそろえる
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: careman
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d careman"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -25,7 +40,25 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      # 様式の版を出す前の確かめ（欄の位置・対応・fields.json の食い違い）
+      - run: npm run forms:check
+      # 様式の元の PDF はリポジトリに入れていない。PDF を作るテストのために、全社協の公式の URL から取る（ハッシュを確かめる）
+      - run: npm run forms:fetch
       - run: npm test
+        env:
+          DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/careman
+      # 様式の管理のスクリプトを、リリースと同じ流れで動かす（移行と様式の登録 → 2 回目は版が増えない → PDF を置き場へ → 書類の向き先）
+      - name: Exercise form admin scripts
+        env:
+          DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/careman
+          LOCAL_STORAGE_DIR: ${{ runner.temp }}/storage
+        run: |
+          node db/migrate.ts --forms
+          node db/migrate.ts --forms | tee "$RUNNER_TEMP/forms.log"
+          grep -F '様式 assessment: v1（変わっていません）' "$RUNNER_TEMP/forms.log"
+          npm run forms:assets -- --pdf-only
+          npm run forms:assets -- --pdf-only | grep -F 'assessment base.pdf: same'
+          npm run forms:rebase -- --dry-run
       - run: npm run build
       - name: Verify built site
         run: |
