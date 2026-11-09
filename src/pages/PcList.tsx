@@ -61,11 +61,11 @@ export function PcList({ staffName }: { staffName: string }) {
               const sub = [c.sex ? `${c.sex}性` : null, c.status, c.isNew ? '新規' : null].filter(Boolean).join(' ・ ')
               const filledText = c.required.filled === 0 ? 'まだ何も入っていません' : c.required.filled >= c.required.total ? 'すべて入っています' : `${c.required.filled} 欄が入っています`
               return (
-                <div className="row" key={c.id}>
-                  <div><a className="name" {...linkProps(`/clients/${c.id}`)}>{c.name} さん</a><div className="sub">{sub}</div></div>
+                <a className="row" key={c.id} {...linkProps(`/clients/${c.id}`)}>
+                  <div><span className="name">{c.name} さん</span><div className="sub">{sub}</div></div>
                   <div>{c.careLevel ? <span className="chip c-gray">{c.careLevel.replace(/(\d)$/, ' $1')}</span> : <span className="chip c-miss">未入力</span>}</div>
                   <div><div className="bar">{pct > 0 && <div style={{ height: 8, width: `${pct.toFixed(1)}%`, background: '#2F5FD0' }} />}</div><div className="sub" style={{ marginTop: 6 }}>{filledText}</div></div>
-                </div>
+                </a>
               )
             })}
           </div>
