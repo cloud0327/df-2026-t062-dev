@@ -6,7 +6,7 @@ import { pageImageAssetPath, type FormAssetsView } from '../core/form.ts'
 import { SURVEY_IMPORT_KEYS, surveyChoice } from '../core/survey-import.ts'
 import { validValue } from '../core/schema.ts'
 import * as forms from '../db/forms.ts'
-import type { Db } from '../db/pool.ts'
+import { tx, type Db } from '../db/pool.ts'
 import * as repo from '../db/repo.ts'
 import type { Verifier } from './auth.ts'
 import { FormUnavailable, makePdf } from './pdf.ts'
@@ -39,8 +39,13 @@ const SaveInput = z.discriminatedUnion('scope', [
   z.object({ scope: z.literal('page'), page: z.number().int().min(1).max(20) }),
   z.object({ scope: z.literal('hunk'), key: z.string().min(1), hunkIndex: z.number().int().min(0) }),
 ])
-const RecordingInput = z.object({ mime: z.string().min(1).max(100) })
-const CompleteInput = z.object({ durationMs: z.number().int().min(0).nullish() })
+const SyncDecisionInput = z.object({ key: z.string().min(1).max(200), decision: z.enum(['apply', 'keep']), source: z.unknown(), target: z.unknown() })
+const RecordingInput = z.object({
+  mime: z.string().min(1).max(100),
+  deviceRecordingId: z.string().uuid().optional(),
+  expiredUploadUrl: z.string().max(4096).optional(),
+})
+const CompleteInput = z.object({ durationMs: z.number().int().min(0).nullish(), bytes: z.number().int().positive().optional() })
 
 const json = (c: Context, body: unknown, status = 200) => c.json(body as object, status as 200)
 
@@ -134,6 +139,14 @@ export function createApp(deps: ApiDeps) {
 
   app.get('/api/documents/:id', authed(async (c, staff, db) => json(c, { document: await repo.getDocument(db, staff.officeId, c.req.param('id')!) })))
 
+  app.get('/api/documents/:id/sync-differences', authed(async (c, staff, db) =>
+    json(c, { differences: await repo.getSyncDifferences(db, staff.officeId, c.req.param('id')!) })))
+
+  app.post('/api/documents/:id/sync-decisions', authed(async (c, staff, db) => {
+    await repo.decideSyncDifference(db, staff, c.req.param('id')!, await body(c, SyncDecisionInput))
+    return json(c, { differences: await repo.getSyncDifferences(db, staff.officeId, c.req.param('id')!), document: await repo.getDocument(db, staff.officeId, c.req.param('id')!) })
+  }))
+
   // 欄の値をそのまま変える直し（差分の欄の文章）。画面が元にした値（base）が今の値と違えば 409
   app.patch('/api/documents/:id/fields', authed(async (c, staff, db) => {
     const { changes } = await body(c, PatchInput)
@@ -188,20 +201,32 @@ export function createApp(deps: ApiDeps) {
     })
   }))
 
-  app.post('/api/clients/:id/recordings', authed(async (c, staff, db) => {
-    const { mime } = await body(c, RecordingInput)
-    const rec = await repo.createRecording(db, staff, c.req.param('id')!, mime)
-    const uploadUrl = await deps.storage().createUploadSession('source', rec.objectPath, mime, c.req.header('Origin') ?? undefined)
-    return json(c, { recordingId: rec.id, uploadUrl }, 201)
-  }))
+  const startRecording = authed(async (c, staff, db) => {
+    const { mime, deviceRecordingId, expiredUploadUrl } = await body(c, RecordingInput)
+    const result = await tx(db, async (conn) => {
+      const rec = await repo.createRecording(conn, staff, c.req.param('id')!, mime, deviceRecordingId)
+      const storage = deps.storage()
+      let uploadUrl = rec.uploadUrl
+      if (rec.status === 'uploaded' || (uploadUrl && await storage.size('source', rec.objectPath))) {
+        uploadUrl = null
+      } else if (!uploadUrl || uploadUrl === expiredUploadUrl) {
+        uploadUrl = await storage.createUploadSession('source', rec.objectPath, rec.mime, c.req.header('Origin') ?? undefined)
+        await repo.setRecordingUploadUrl(conn, rec.id, uploadUrl)
+      }
+      return { recordingId: rec.id, uploadUrl }
+    })
+    return json(c, result, 201)
+  })
+  app.post('/api/clients/:id/recordings', startRecording)
+  // 新しい画面が古い API に当たっても、再送のたびに別の録音を作らないよう別の道を使う。
+  app.post('/api/clients/:id/recordings/resumable', startRecording)
 
   app.post('/api/recordings/:id/complete', authed(async (c, staff, db) => {
-    const { durationMs } = await body(c, CompleteInput)
-    const rec = await repo.getRecording(db, staff.officeId, c.req.param('id')!)
-    const size = await deps.storage().size('source', rec.objectPath)
-    if (!size) return json(c, { error: 'not_uploaded' }, 409)
-    const job = await repo.completeRecording(db, staff, rec.id, size, durationMs ?? null)
-    if (job.status === 'queued') await deps.queue().enqueue(job.jobId)
+    const { durationMs, bytes } = await body(c, CompleteInput)
+    const jobId = await repo.completeRecording(db, staff, c.req.param('id')!, durationMs ?? null, bytes,
+      (path) => deps.storage().size('source', path))
+    if (!jobId) return json(c, { error: 'not_uploaded' }, 409)
+    const job = await repo.dispatchRecordingJob(db, jobId, () => deps.queue().enqueue(jobId, { initial: true }))
     return json(c, job, 202)
   }))
 
