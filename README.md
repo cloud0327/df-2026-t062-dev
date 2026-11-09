@@ -101,7 +101,7 @@ npm run build
 | `GCS_FORMS_BUCKET` | api・`forms:assets` | 様式の元の PDF とページの画像の置き場（非公開。画面には期限つきの URL） |
 | `LOCAL_SIGNING_SECRET` | api（ローカル） | ローカルの期限つきの URL の署名の鍵。なければ起動のたびに作る |
 | `QUEUE_MODE`・`TASKS_QUEUE`・`WORKER_URL`・`TASKS_INVOKER_SA` | api | `tasks` で Cloud Tasks。既定は同じプロセス |
-| `AI_PROVIDER`・`GOOGLE_CLOUD_PROJECT`・`GEMINI_MODEL`・`GEMINI_LOCATION`・`STT_LOCATION` | worker | `vertex` で本物の AI。既定は `fake` |
+| `AI_PROVIDER`・`GOOGLE_CLOUD_PROJECT`・`GEMINI_MODEL`・`GEMINI_LOCATION`・`STT_LOCATION` | worker | `vertex` で本物の AI。既定は `fake`。Gemini の既定は `gemini-3.8-flash`（`global`）、文字起こしは東京（`asia-northeast1`） |
 
 ## CI/CD
 
@@ -120,6 +120,7 @@ PR と `main` で、型チェック、様式の確かめ、テスト（PostgreSQ
 
 - このリポジトリは公開です。入っているのは、公開の演習シナリオ（山梨県介護支援専門員協会の演習用 PDF を写したもの）と、架空の見本データだけです。
 - 録音・文字起こし・用紙の値は、Google Cloud の東京リージョン（Cloud SQL・Cloud Storage）に置きます。ログには中身を出しません（ジョブの id・段・時間・誤りの種類・使った量だけ）。
+- 用紙を書く Gemini（Vertex AI）は `global` の呼び先で使います。東京で使える Gemini は 3.5 Flash だけで、新しく安い 3.8 Flash は global・us・eu だけのためです。Google は、東京などの地域の呼び先でも global でも、その地域の中で処理することを保証していません（保証するのは us・eu の呼び先だけ）。Vertex AI に送ったデータは、モデルの学習には使われません。
 - 誰が、いつ、直した・保存した・PDF を出したかを `audit_events` に残します。
 
 ## 最終提出

@@ -454,7 +454,7 @@ python3 design/bench/bench.py score --gold design/scenario/gold --submission out
 - 処理の状態は、提案書の `pending`／`processing`／`completed`／`partial`／`failed` を使う。
 - ジョブ ID と入力の版で、同じ処理を 2 回しない（Cloud Tasks の再配信に備える）。
 - ログには、録音・文字起こし・プロンプトの中身を出さない。出すのは、ジョブ ID、段、時間、エラーの種類、使った量だけ。
-- Vertex AI は東京リージョンで使う。送ったデータが学習に使われない設定と契約を確かめる。現場の聞き取りでも、AI を入れるときの一番の壁は安全と個人情報だった。
+- 保存（DB・録音の置き場）と文字起こし（Chirp 3）は東京リージョン。Gemini は `global` の呼び先の `gemini-3.8-flash`（2026-11-09 に決めた。東京で使える Gemini は 3.5 Flash だけで、3.8 Flash より高く性能も低い。Google は地域の呼び先でもその地域の中での処理を保証しない）。送ったデータが学習に使われない設定と契約を確かめる。現場の聞き取りでも、AI を入れるときの一番の壁は安全と個人情報だった。
 - 誰が、いつ、直した・保存した・PDF を出したかを残す。
 - 本物の面談の記録は、bench の判定役（Claude）など外のサービスに送らない（プロジェクトの決まり）。
 
@@ -526,5 +526,5 @@ python3 design/bench/bench.py score --gold design/scenario/gold --submission out
 - 長い文章が用紙の枠に入らないときの要約（pdfme の「まだやっていないこと」）。
 - 置き場所の決まりを、fields.json にどう持たせるか。
 - 事実をどこまで細かく分けるかの目安（データの定義と同じ）。
-- Gemini のモデルと費用の上限。bench で比べてから決める（リージョンは東京）。
+- Gemini の費用の上限。モデルは `gemini-3.8-flash`（global）にした（2026-11-09）。bench で 1 回流して、1 回の面談の費用を測る。
 - モニタリングとデイの体験用紙（様式ができたら、`create_document` で作れる）。

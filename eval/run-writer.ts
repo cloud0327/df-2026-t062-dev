@@ -75,5 +75,5 @@ for (const [i, visit] of genpon.visits.entries()) {
   console.log(`${t}: 欄 ${Object.keys(fields).length}、呼び出し ${r.usage.calls}、失敗 [${r.failed.join(', ')}]、${Math.round(r.usage.yen)} 円`)
 }
 
-write(join(out, 'usage.json'), { model: process.env.GEMINI_MODEL ?? 'gemini-3.5-flash-lite', dry: args.dry, ...(args.dry ? { dryPromptChars: dryChars } : {}), total, visits: perVisit })
+write(join(out, 'usage.json'), { model: process.env.GEMINI_MODEL ?? 'gemini-3.8-flash', dry: args.dry, ...(args.dry ? { dryPromptChars: dryChars } : {}), total, visits: perVisit })
 console.log(`合計: ${total.calls} 回、${Math.round(total.yen)} 円${args.dry ? `（dry: 指示文 ${dryChars} 字）` : ''}`)

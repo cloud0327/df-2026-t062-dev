@@ -19,9 +19,10 @@ export interface Llm {
   usage(): Usage
 }
 
-// 東京の単価（円／100万トークン）。Flash Lite。3.6 Flash は 261 円・1,305 円
-const YEN_IN = 52
-const YEN_OUT = 435
+// 単価（円／100万トークン、1 ドル 158 円）。Gemini 3.8 Flash の global の特別価格（$0.75・$3.75、2026-12-31 まで）。
+// 2027-01-01 からは $1.5・$7.5（237 円・1,185 円）になるので、GEMINI_YEN_IN／GEMINI_YEN_OUT で変える
+const YEN_IN = 119
+const YEN_OUT = 593
 
 const log = (rec: Record<string, unknown>) => console.log(JSON.stringify({ severity: 'INFO', ...rec }))
 
@@ -33,7 +34,8 @@ function realClient(env: NodeJS.ProcessEnv): Client {
   let ai: GoogleGenAI | undefined
   return {
     async generate({ model, prompt, schema }) {
-      ai ??= new GoogleGenAI({ vertexai: true, project: env.GOOGLE_CLOUD_PROJECT, location: env.GEMINI_LOCATION ?? 'asia-northeast1' })
+      // 3.6〜3.8 Flash は東京にない（global・us・eu だけ。2026-11-09 に確かめた）ので、既定は global
+      ai ??= new GoogleGenAI({ vertexai: true, project: env.GOOGLE_CLOUD_PROJECT, location: env.GEMINI_LOCATION ?? 'global' })
       const r = await ai.models.generateContent({
         model,
         contents: prompt,
@@ -54,7 +56,7 @@ export interface GeminiOptions {
 
 /** ジョブごとに `newLlm()` で数え直す（クライアントは使い回す） */
 export function geminiFactory(env: NodeJS.ProcessEnv, opts: GeminiOptions = {}): () => Llm {
-  const model = env.GEMINI_MODEL ?? 'gemini-3.5-flash-lite'
+  const model = env.GEMINI_MODEL ?? 'gemini-3.8-flash'
   const yenIn = Number(env.GEMINI_YEN_IN ?? YEN_IN)
   const yenOut = Number(env.GEMINI_YEN_OUT ?? YEN_OUT)
   const retries = opts.retries ?? 4

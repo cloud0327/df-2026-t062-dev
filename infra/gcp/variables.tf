@@ -135,13 +135,13 @@ variable "ai_provider" {
 }
 
 variable "gemini_model" {
-  description = "worker の GEMINI_MODEL。"
+  description = "worker の GEMINI_MODEL。東京で使える Gemini は 3.5 Flash だけなので、新しく安い 3.8 Flash を global で使う（2026-11-09）。"
   type        = string
-  default     = "gemini-2.5-pro"
+  default     = "gemini-3.8-flash"
 }
 
 variable "gemini_location" {
-  description = "worker の GEMINI_LOCATION（Vertex AI のロケーション）。"
+  description = "worker の GEMINI_LOCATION（Vertex AI のロケーション）。3.8 Flash は global・us・eu だけ。"
   type        = string
   default     = "global"
 }
