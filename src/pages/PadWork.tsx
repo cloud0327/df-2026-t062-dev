@@ -100,7 +100,7 @@ export function PadWork({ clientId }: { clientId: string }) {
         )}
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
           {saved && <span role="status" style={{ fontSize: 15, fontWeight: 500, color: '#1F49B0' }}>保存しました</span>}
-          <button type="button" onClick={async () => { await state.saveDocument(); setSaved(true); setSavedPages(new Set(pages.map((p) => p.no))) }} disabled={phase === 'writing'} style={{ fontFamily: "'Noto Sans JP',sans-serif", fontSize: 16, fontWeight: 700, borderRadius: 12, padding: '0 18px', minHeight: 48, cursor: 'pointer', border: '1px solid #1C2229', background: '#1C2229', color: '#FFFFFF', whiteSpace: 'nowrap' }}>書類を保存</button>
+          <button type="button" onClick={async () => { const ok = await state.saveDocument(); setSaved(ok); if (ok) setSavedPages(new Set(pages.map((p) => p.no))) }} disabled={phase === 'writing'} style={{ fontFamily: "'Noto Sans JP',sans-serif", fontSize: 16, fontWeight: 700, borderRadius: 12, padding: '0 18px', minHeight: 48, cursor: 'pointer', border: '1px solid #1C2229', background: '#1C2229', color: '#FFFFFF', whiteSpace: 'nowrap' }}>書類を保存</button>
         </div>
         {tocOpen && (
           <nav aria-label="ページ" style={{ position: 'absolute', left: 150, top: 64, width: 360, background: '#FFFFFF', borderRadius: 16, boxShadow: '0 12px 36px rgba(20,24,32,0.28)', padding: 8, display: 'flex', flexDirection: 'column' }}>
@@ -162,7 +162,7 @@ export function PadWork({ clientId }: { clientId: string }) {
                 <span>{isAdm ? p.title : `${p.no} ・ ${p.title}`}</span>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: 14, color: '#5B6672' }}>{dirty ? countText(c) : savedPages.has(p.no) ? '保存しました' : ''}</span>
-                  <button type="button" className="pgsave" disabled={!dirty || phase === 'writing'} onClick={async () => { await state.savePage(p.no); setSavedPages((s) => new Set(s).add(p.no)) }} style={dirty ? undefined : { opacity: 0.35, cursor: 'default' }}>このページを保存</button>
+                  <button type="button" className="pgsave" disabled={!dirty || phase === 'writing'} onClick={async () => { if (await state.savePage(p.no)) setSavedPages((s) => new Set(s).add(p.no)) }} style={dirty ? undefined : { opacity: 0.35, cursor: 'default' }}>このページを保存</button>
                 </span>
               </div>
               <FormPage page={p} state={state} touch disabled={phase === 'writing'} batchLabel={batchLabel} glow={phase === 'done'} />

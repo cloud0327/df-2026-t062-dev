@@ -75,7 +75,7 @@ export function PcWork({ clientId, staffName }: { clientId: string, staffName: s
         <span>{isAdm ? title : `${no} ・ ${title}`}</span>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 11, color: '#5B6672' }}>{dirty ? countText(c) : savedPages.has(no) ? '保存しました' : i === 0 && empty ? 'まだ何も書かれていません' : ''}</span>
-          <button type="button" className="pgsave" disabled={!dirty} onClick={async () => { await state.savePage(no); setSavedPages((s) => new Set(s).add(no)) }} style={dirty ? undefined : { opacity: 0.35, cursor: 'default' }}>このページを保存</button>
+          <button type="button" className="pgsave" disabled={!dirty} onClick={async () => { if (await state.savePage(no)) setSavedPages((s) => new Set(s).add(no)) }} style={dirty ? undefined : { opacity: 0.35, cursor: 'default' }}>このページを保存</button>
         </span>
       </div>
     )
@@ -148,7 +148,7 @@ export function PcWork({ clientId, staffName }: { clientId: string, staffName: s
               </div>
               <span style={{ fontSize: 12, color: '#5B6672' }}>{empty ? 'まだ何も書かれていません' : countText(state.total) || 'すべて保存済み'}</span>
               {docSaved && <span role="status" style={{ fontSize: 13, fontWeight: 500, color: '#1F49B0' }}>保存しました</span>}
-              <button type="button" className="savebtn pc-work-save" aria-label="書類を保存" onClick={async () => { await state.saveDocument(); setDocSaved(true); setSavedPages(new Set(pages.map((p) => p.no))) }}>保存</button>
+              <button type="button" className="savebtn pc-work-save" aria-label="書類を保存" onClick={async () => { const ok = await state.saveDocument(); setDocSaved(ok); if (ok) setSavedPages(new Set(pages.map((p) => p.no))) }}>保存</button>
             </div>
           </div>
 
