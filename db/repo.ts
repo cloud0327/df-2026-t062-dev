@@ -345,6 +345,8 @@ export interface ApplyInput {
   label: string
   jobId?: string
   proposed: Record<string, { value: unknown, cite?: string[] }>
+  /** プログラムが決める欄の値（1 回目の録音の日をアセスメント実施日にする、など） */
+  system?: Record<string, unknown>
 }
 
 /**
@@ -356,8 +358,9 @@ export async function applyBatch(db: Db, input: ApplyInput, run: <T>(fn: (c: Tx)
     const d = await lockDocument(c, input.officeId, input.documentId)
     const fields = await readFields(c, d.id, d.clientId)
     const current: Record<string, CurrentField> = Object.fromEntries(Object.entries(fields).map(([k, v]) => [k, { value: v.value, by: v.by }]))
-    const proposed = Object.fromEntries(Object.entries(input.proposed).filter(([k]) => allowedKey(d.form, k)))
-    const plan = planBatch(current, proposed)
+    const system = Object.fromEntries(Object.entries(input.system ?? {}).filter(([k]) => allowedKey(d.form, k)).map(([k, v]) => [k, { value: v }]))
+    const proposed = { ...Object.fromEntries(Object.entries(input.proposed).filter(([k]) => allowedKey(d.form, k))), ...system }
+    const plan = planBatch(current, proposed, new Set(Object.keys(system)))
     if (!plan.changes.length && !plan.kept.length) return { batchId: null, plan }
     const batch = (await c.query(
       'INSERT INTO batches (office_id, client_id, document_id, kind, label, job_id, changes, kept) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id',

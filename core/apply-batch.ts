@@ -50,10 +50,12 @@ export function sameValue(a: unknown, b: unknown): boolean {
 export function planBatch(
   current: Record<string, CurrentField | undefined>,
   proposed: Record<string, { value: unknown, cite?: string[] }>,
+  /** プログラムが決める欄（アセスメント実施日など）。AI の欄でなくても書く（ケアマネの値は守る） */
+  systemKeys: ReadonlySet<string> = new Set(),
 ): BatchPlan {
   const plan: BatchPlan = { changes: [], kept: [], skipped: [] }
   for (const [key, p] of Object.entries(proposed)) {
-    if (!aiMayWrite(key)) { plan.skipped.push({ key, reason: 'not-ai-field' }); continue }
+    if (!aiMayWrite(key) && !systemKeys.has(key)) { plan.skipped.push({ key, reason: 'not-ai-field' }); continue }
     if (isEmpty(p.value)) { plan.skipped.push({ key, reason: 'empty' }); continue }
     const cur = current[key]
     if (cur && !isEmpty(cur.value) && cur.by === 'cm') { plan.kept.push({ key, reason: 'cm' }); continue }

@@ -23,6 +23,8 @@ async function setStep(db: Db, jobId: string, step: string, patch: Record<string
 }
 
 const md = (d: Date) => `${d.getMonth() + 1}/${d.getDate()}`
+/** 日本の日付（YYYY-MM-DD） */
+const ymd = (d: Date) => new Date(d.getTime() + 9 * 3600 * 1000).toISOString().slice(0, 10)
 
 export async function runJob(deps: WorkerDeps, jobId: string): Promise<void> {
   const db = await deps.db()
@@ -119,6 +121,8 @@ export async function runJob(deps: WorkerDeps, jobId: string): Promise<void> {
     const { batchId, plan } = await applyBatch(db, {
       officeId: job.office_id, documentId: job.document_id, kind: 'recording', jobId,
       label: `AI 書き込み ${n}・${md(new Date(rec.recorded_at))} の録音`, proposed,
+      // 1 回目の録音の日を、アセスメント実施日（初回）にする。2 回目からは更新の日
+      system: first ? (current['assessment.initialDate'] ? {} : { 'assessment.initialDate': ymd(new Date(rec.recorded_at)) }) : { 'assessment.updateDate': ymd(new Date(rec.recorded_at)) },
     })
     const status = written.failed.length ? 'partial' : 'succeeded'
     await db.query(
