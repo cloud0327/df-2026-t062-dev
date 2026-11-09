@@ -6,9 +6,23 @@ import { DiffField } from '../components/DiffField.tsx'
 import type { DocState } from './useDocument.ts'
 import { fsz, pc, pos, W, H, type PageLayout, type SlotView } from './layout.ts'
 
-const ORANGE: CSSProperties = { background: 'rgba(240,160,64,0.18)', boxShadow: 'inset 0 0 0 1px rgba(232,145,45,0.6)' }
-const YELLOW: CSSProperties = { background: 'rgba(255,196,0,0.35)', outline: '1.5px solid #E0A000' }
+const ORANGE: CSSProperties = {
+  background: 'rgba(240,160,64,0.18)',
+  outline: '2px dashed #D97706',
+  outlineOffset: '-2px',
+}
+const YELLOW: CSSProperties = {
+  background: 'rgba(255,196,0,0.35)',
+  outline: '2px solid #B77900',
+  outlineOffset: '-2px',
+}
+
 const BLUE: CSSProperties = { background: 'rgba(36,83,196,0.07)', boxShadow: 'inset 0 0 0 1px rgba(36,83,196,0.3)' }
+const changeStatus = (mark: string | undefined) => {
+  if (mark === 'ai') return 'AIが入力した欄'
+  if (mark === 'cm') return '手動で修正した欄'
+  return '通常の入力欄'
+}
 
 interface Props {
   page: PageLayout
@@ -109,7 +123,7 @@ function FormPageInner({ page, state, touch, disabled, batchLabel, dim, glow }: 
       ? <FitTextarea key={s.name} label={s.label} value={value} disabled={disabled} onChange={(t) => state.type(s.name, t)} onBlur={() => state.commit(s.name)} style={style} base={fsz(s.pt)} />
       : (
         <input
-          key={s.name} className="fx" type="text" aria-label={s.label} aria-invalid={!!reason} value={value} disabled={disabled}
+          key={s.name} className="fx" type="text" aria-label={`${s.label}（${changeStatus(m)}）`} aria-invalid={!!reason} value={value} disabled={disabled}
           onChange={(e) => state.type(s.name, e.target.value)}
           onBlur={() => state.commit(s.name)}
           // 変換中の Enter は確定に使わない
