@@ -1,134 +1,115 @@
-import { useRef, useState, type ReactNode } from 'react'
-import { SurveyImport, type SurveyImportProps } from '../survey/SurveyImport.tsx'
+import { useEffect, useRef, useState } from 'react'
+import { SurveyImport } from '../survey/SurveyImport.tsx'
+import type { SurveyPreview } from '../survey/readSurvey.ts'
+import { PetIcon, PetMessage } from './PetVisuals.tsx'
+import { fieldLabel, type availableTopics, type ReviewItem } from './petAssessment.ts'
 import './PetHelper.css'
 
-const menus = {
-  revise: {
-    icon: 'pencil',
-    title: '書き方を相談する',
-    description: '用紙の書き方や、入力した文章の表現をペットに相談できます。',
-  },
-  documents: {
-    icon: 'file-earmark-plus',
-    title: '書類を追加する',
-    description: '認定調査票から、アセスメントに反映する候補を確認できます。',
-  },
-  interview: {
-    icon: 'calendar-plus',
-    title: '次の面談の準備をする',
-    description: '次の面談に向けて、確認すべき質問項目やチェックポイントを整理してもらえます。',
-  },
-} as const
+const menus = [
+  { id: 'documents', icon: 'file-earmark-arrow-down', title: '書類を取り込む' },
+  { id: 'review', icon: 'check2-circle', title: '確認する' },
+  { id: 'interview', icon: 'lightbulb', title: '面談のヒント' },
+] as const
 
-type Menu = keyof typeof menus
-const menuKeys = ['revise', 'documents', 'interview'] satisfies Menu[]
+type Menu = typeof menus[number]['id']
 
-const sampleTopics = [
-  '住環境の詳細（段差・手すりの有無など）',
-  '健康状態の変化（直近の体調・受診予定など）',
-  'ご家族の支援体制（同居・訪問の頻度など）',
-]
-
-function Icon({ name }: { name: string }) {
-  return <span className="assistant-icon" aria-hidden="true" style={{ maskImage: `url(/assistant/icons/${name}.svg)` }} />
+interface Props {
+  available: boolean
+  clientName: string
+  review: ReviewItem[]
+  topics: ReturnType<typeof availableTopics>
+  onJump: (key: string) => boolean
+  onPreview: (preview: SurveyPreview) => number
+  onIdentity: (sha256: string, confirmed: boolean) => void
+  verifiedSources: ReadonlySet<string>
 }
 
-function Pet() {
-  return <img className="assistant-pet" src="/assistant/pet-cat.jpg" alt="" />
-}
-
-function AssistantMessage({ children }: { children: ReactNode }) {
-  return <div className="assistant-message"><Pet /><p>{children}</p></div>
-}
-
-function InterviewMock() {
-  return (
-    <>
-      <AssistantMessage>現在のフェースシートの内容をもとに、次の面談で確認しておきたい話題を整理しました。</AssistantMessage>
-      <ul className="assistant-topics">
-        {sampleTopics.map((topic, i) => (
-          <li key={topic}>
-            <span role="checkbox" aria-checked={i < 2} aria-disabled="true"><Icon name={i < 2 ? 'check-square-fill' : 'square'} />{topic}</span>
-          </li>
-        ))}
-      </ul>
-      <p className="assistant-note"><Icon name="info-circle" />チェックのON/OFFで、作成する質問リストの内容が変わります。</p>
-      <AssistantMessage>この内容で質問リストを作成しますか？</AssistantMessage>
-      <div className="assistant-message assistant-user-message"><p>はい、お願いします！</p><span className="assistant-user"><Icon name="person" /></span></div>
-      <AssistantMessage>承知しました！<br />次の面談で使える質問リストを作成しました。</AssistantMessage>
-      <div className="assistant-attachment">
-        <Icon name="file-earmark-text" />
-        <strong>次回面談の質問リスト.pdf</strong>
-        <button className="assistant-outline" type="button" disabled><Icon name="eye" />プレビュー</button>
-        <button className="assistant-icon-button" type="button" aria-label="質問リストをダウンロード" disabled><Icon name="download" /></button>
-      </div>
-      <div className="assistant-actions">
-        <button className="assistant-outline" type="button" disabled><Icon name="pencil" />質問リストを編集</button>
-        <button className="assistant-outline" type="button" disabled><Icon name="plus-circle" />面談メモの<br />テンプレートを作る</button>
-      </div>
-    </>
-  )
-}
-
-export function PetHelper({ survey }: { survey?: SurveyImportProps }) {
+export function PetHelper({ available, clientName, review, topics, onJump, onPreview, onIdentity, verifiedSources }: Props) {
   const [menu, setMenu] = useState<Menu | null>(null)
-  const selected = menu ? menus[menu] : null
-  const lastMenu = useRef<Menu | null>(null)
-  const goBack = () => {
-    lastMenu.current = menu
-    setMenu(null)
+  const [confirmed, setConfirmed] = useState(false)
+  const [error, setError] = useState('')
+  const body = useRef<HTMLDivElement>(null)
+  const back = useRef<HTMLButtonElement>(null)
+  const previousMenu = useRef<Menu | null>(null)
+  const menuButtons = useRef<Partial<Record<Menu, HTMLButtonElement | null>>>({})
+  const pending = review.filter((item) => !item.confirmed).length
+
+  useEffect(() => {
+    body.current?.scrollTo(0, 0)
+    if (menu) back.current?.focus({ preventScroll: true })
+    else if (previousMenu.current) menuButtons.current[previousMenu.current]?.focus({ preventScroll: true })
+  }, [menu])
+
+  const open = (next: Menu | null) => {
+    if (menu) previousMenu.current = menu
+    setMenu(next)
+    setError('')
+    setConfirmed(false)
   }
+  const jump = (key: string) => setError(onJump(key) ? '' : '用紙に対応する入力欄が見つかりませんでした。')
 
   return (
     <aside className="assistant-panel" aria-labelledby="assistant-title">
-      {selected && (
-        <header className="assistant-header">
-          {menu === 'interview' && <button className="assistant-icon-button" type="button" aria-label="メニューに戻る" autoFocus onClick={goBack}><Icon name="chevron-left" /></button>}
-          {menu === 'interview' ? <Icon name={selected.icon} /> : <Pet />}
-          <h2 id="assistant-title">{menu === 'interview' ? selected.title : 'ペットに相談'}</h2>
-        </header>
-      )}
-      <div className={selected ? "assistant-body" : "assistant-body assistant-home"} key={menu}>
-        {selected ? (
+      <div ref={body} className={`assistant-body${menu ? '' : ' assistant-home'}`}>
+        {menu && (
+          <header className="assistant-header">
+            <button ref={back} type="button" aria-label="メニューに戻る" onClick={() => open(null)}><PetIcon name="arrow-left" /></button>
+            <h2 id="assistant-title">{menus.find(({ id }) => id === menu)?.title}</h2>
+          </header>
+        )}
+        {!menu && (
           <>
-            {menu !== 'interview' && (
-              <div className="assistant-detail">
-                <button className="assistant-icon-button" type="button" aria-label="メニューに戻る" autoFocus onClick={goBack}><Icon name="chevron-left" /></button>
-                <span className="assistant-icon-tile"><Icon name={selected.icon} /></span>
-                <h3>{selected.title}</h3>
-                <p>{selected.description}</p>
-              </div>
-            )}
-            {menu === 'documents' && (survey ? <SurveyImport key={survey.document.id} {...survey} />
-              : <p>アセスメントを開くと、認定調査票を読み取れます。</p>)}
-            {menu === 'interview' && <InterviewMock />}
-            {menu === 'revise' && <textarea className="assistant-revision" aria-label="相談内容" placeholder="相談したい内容を入力…" disabled />}
-          </>
-        ) : (
-          <>
-            <div className="assistant-intro">
-              <Pet />
-              <h2 id="assistant-title">こんにちは！今日は何から一緒に進めましょうか？</h2>
-            </div>
-            <div className="assistant-menu">
-              {menuKeys.map((key) => {
-                const item = menus[key]
-                return (
-                  <button key={key} type="button" className="assistant-card" ref={(button) => {
-                    if (button && lastMenu.current === key) {
-                      button.focus()
-                      lastMenu.current = null
-                    }
-                  }} onClick={() => setMenu(key)}>
-                    <span className="assistant-icon-tile"><Icon name={item.icon} /></span>
-                    <strong>{item.title}</strong>
-                    <Icon name="chevron-right" />
-                  </button>
-                )
-              })}
+            <PetMessage home>今日は何から<br />一緒に進めましょうか？</PetMessage>
+            <div className="assistant-stack assistant-menu">
+              {menus.map(({ id, icon, title }) => (
+                <button key={id} ref={(node) => { menuButtons.current[id] = node }} type="button" className="assistant-card" onClick={() => open(id)}>
+                  <PetIcon name={icon} />
+                  <span><strong>{title}</strong>{id === 'review' && <small>（未確認 {pending}件）</small>}</span>
+                  <PetIcon name="chevron-right" />
+                </button>
+              ))}
             </div>
           </>
         )}
+        <SurveyImport active={menu === 'documents'} available={available} clientName={clientName} onPreview={onPreview} onIdentity={onIdentity} verifiedSources={verifiedSources} />
+        {menu === 'review' && (
+          <>
+            <PetMessage>未確認の項目が{pending}件あります。<br />項目を選ぶと、用紙の該当欄に移動します。</PetMessage>
+            <div className="assistant-review-tabs" role="group" aria-label="確認状態">
+              <button type="button" aria-pressed={!confirmed} onClick={() => { setConfirmed(false); setError('') }}>未確認（{pending}件）</button>
+              <button type="button" aria-pressed={confirmed} onClick={() => { setConfirmed(true); setError('') }}><PetIcon name="check2" />確認済み（{review.length - pending}件）</button>
+            </div>
+            <ul className="assistant-stack">
+              {review.filter((item) => item.confirmed === confirmed).map(({ key, value, reason }) => (
+                <li key={key}><button type="button" className="assistant-card assistant-review-card" onClick={() => jump(key)}>
+                  {confirmed ? <PetIcon name="check2" /> : <span className="assistant-review-dot" />}
+                  <strong>{fieldLabel(key)}</strong>
+                  <span>{value}{reason && <small>{reason}</small>}</span><PetIcon name="chevron-right" />
+                </button></li>
+              ))}
+            </ul>
+            {!review.some((item) => item.confirmed === confirmed) && <p className="assistant-empty">{confirmed ? '確認済みの項目はありません。' : '未確認の項目はありません。'}</p>}
+          </>
+        )}
+        {menu === 'interview' && (
+          <>
+            <PetMessage>空白の項目を埋めるために、<br />面談で確認するとよい話題の例を提案します。</PetMessage>
+            <ul className="assistant-stack">
+              {topics.map(({ title, icon, description, keys }) => (
+                <li key={title}>
+                  <div className="assistant-card assistant-topic">
+                    <PetIcon name={icon} /><div><h3>{title}</h3><small>{description}</small></div>
+                  </div>
+                  <ul className="assistant-topic-targets" aria-label={`${title}の入力欄`}>
+                    {keys.map((key) => <li key={key}><button type="button" onClick={() => jump(key)}>{fieldLabel(key)}<PetIcon name="chevron-right" /></button></li>)}
+                  </ul>
+                </li>
+              ))}
+            </ul>
+            {!topics.length && <p className="assistant-empty">{available ? '面談のヒントに対応する空欄はありません。' : 'アセスメントを開くと面談のヒントを表示します。'}</p>}
+          </>
+        )}
+        {error && <p className="assistant-error" role="alert">{error}</p>}
       </div>
     </aside>
   )

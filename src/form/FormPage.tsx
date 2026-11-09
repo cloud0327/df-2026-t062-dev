@@ -37,9 +37,14 @@ interface Props {
   glow?: boolean
   /** AI が今回の処理で反映できなかった欄の fields.json key */
   incompleteFields?: string[]
+  petFocus?: string
+  provisional?: ReadonlyMap<string, unknown>
+  adoptingKey?: string
+  onAdopt?: (slot: string) => void
+  onEditChoice?: (field: string) => void
 }
 
-function FormPageInner({ page, state, touch, disabled, batchLabel, dim, glow, incompleteFields = [] }: Props) {
+function FormPageInner({ page, state, touch, disabled, batchLabel, dim, glow, incompleteFields = [], petFocus, provisional, adoptingKey, onAdopt, onEditChoice }: Props) {
   const [open, setOpen] = useState('')
   const [diffOpen, setDiffOpen] = useState('')
   // 様式の画像は非公開の置き場にある（期限つきの URL）。読めなければ 1 回だけ URL を取り直し、それでもだめなら白い紙に欄だけを出す
@@ -50,28 +55,37 @@ function FormPageInner({ page, state, touch, disabled, batchLabel, dim, glow, in
   const isIncomplete = (s: SlotView) => !!s.binding && incompleteKeys.has(s.binding.ref.key)
 
   const cell = open ? page.slots.find((s) => s.name === open && s.kind === 'cell') : undefined
+  const target = petFocus ? page.slots.find((s) => s.name === petFocus) : undefined
   const freshCls = glow ? 'ov fresh glow' : 'ov fresh'
 
   const renderMark = (s: SlotView) => {
     const v = display(s.name)
-    const on = s.kind === 'circle' ? v === 'true' : v === '✓'
+    const proposed = provisional?.has(s.name) ?? false
+    const key = s.binding?.ref.key
+    const on = proposed || (s.kind === 'circle' ? v === 'true' : v === '✓')
     const m = marks.get(s.name)
     const pad = s.kind === 'check' ? (touch ? 1.2 : 1.0) : 0.2
     const box = pos(s.x, s.y, s.w, s.h)
     const incomplete = isIncomplete(s)
     return (
       <span key={s.name}>
-        {m === 'cm' && <span className="chg" style={box} />}
+        {(m === 'cm' || proposed) && <span className="chg" style={box} data-provisional={proposed || undefined} />}
         {m === 'ai' && on && <span className={freshCls} style={box} />}
-        {!m && !(m === 'ai' && on) && <span className="able" style={box} />}
+        {!proposed && !m && <span className="able" style={box} />}
         {m === 'ai' && !on && <span className="able" style={box} />}
         {incomplete && <span className="ov incomplete" style={box} aria-hidden="true" />}
         {on && s.kind === 'circle' && <span className="ring" style={box} />}
         {on && s.kind === 'check' && <span className="mark" style={{ ...box, fontSize: '2.1cqw' }}>✓</span>}
         <button
-          className="hit" type="button" disabled={disabled}
-          aria-label={`${s.label}${incomplete ? '（AI未反映）' : ''}${s.kind === 'circle' ? 'に丸を付ける' : 'に ✓ を付ける'}`} aria-pressed={on} aria-invalid={incomplete}
-          onClick={() => edit(s.name, s.kind === 'circle' ? (on ? 'false' : 'true') : (on ? '' : '✓'))}
+          className="hit" type="button" disabled={disabled || (!!adoptingKey && adoptingKey === key)}
+          aria-label={`${s.label}${incomplete ? '（AI未反映）' : ''}${proposed ? '（書類からの仮入力候補）' : s.kind === 'circle' ? 'に丸を付ける' : 'に ✓ を付ける'}`} aria-pressed={on} aria-invalid={incomplete}
+          onClick={() => {
+            if (proposed) onAdopt?.(s.name)
+            else {
+              if (key) onEditChoice?.(key)
+              edit(s.name, s.kind === 'circle' ? (on ? 'false' : 'true') : (on ? '' : '✓'))
+            }
+          }}
           style={pos(s.x - pad, s.y - 0.2, s.w + pad * 2, s.h + 0.4)}
         />
       </span>
@@ -160,6 +174,7 @@ function FormPageInner({ page, state, touch, disabled, batchLabel, dim, glow, in
         ? <div className="pimg" role="img" aria-label={page.title} style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: '4%', color: '#8A919C', fontSize: 12 }}>{image === null && !noImage ? '様式の画像が置き場にありません（npm run forms:assets）' : ''}</div>
         : <img className="pimg" src={image} alt={`${page.title}`} style={dim ? { opacity: 0.55 } : undefined} draggable={false} onError={() => { if (!state.imageFailed()) setNoImage(true) }} />}
       {page.slots.map((s) => (s.kind === 'circle' || s.kind === 'check' ? renderMark(s) : s.kind === 'cell' ? renderCell(s) : renderText(s)))}
+      {target && <span className="pc-pet-field-focus" data-slot={target.name} style={pos(target.x, target.y, target.w, target.h)} aria-hidden="true" />}
       {cell && (
         <div role="dialog" aria-label={cell.label} style={{
           position: 'absolute', zIndex: 5, left: pc(Math.min(cell.x, touch ? 108 : 125), W), top: pc(cell.y + cell.h + 1.2, H),

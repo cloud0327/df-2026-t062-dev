@@ -1,167 +1,182 @@
-import { useState } from 'react'
-import { sameValue } from '../../core/apply-batch.ts'
-import { spec } from '../../core/fields.ts'
-import { SURVEY_IMPORT_KEYS, surveyChoice, type SurveyImportKey } from '../../core/survey-import.ts'
-import { api, ApiError, type DocumentView } from '../lib/api.ts'
-import type { SurveyPreview } from './readSurvey.ts'
+import { useEffect, useRef, useState } from 'react'
+import { fieldLabel } from '../components/petAssessment.ts'
+import { PetIcon, PetMessage } from '../components/PetVisuals.tsx'
+import type { SurveyPreview, SurveyStep } from './readSurvey.ts'
 
-export interface SurveyImportProps {
-  document: DocumentView
+const documents = [
+  { kind: 'survey', title: '認定調査票', description: '生活動作や介助の状況を記録した書類', icon: 'file-earmark-text' },
+  { kind: 'opinion', title: '主治医意見書', description: '傷病の経過や医学的な注意点を記録した書類', icon: 'stethoscope' },
+  { kind: 'nursing', title: '看護サマリー・退院時情報', description: '入院中の経過や医療処置などを引き継ぐ書類', icon: 'bed-double' },
+] as const
+
+const steps = [
+  { id: 'prepare', label: 'ファイルの準備' },
+  { id: 'read', label: '書類の読み取り' },
+  { id: 'map', label: 'アセスメントへの候補生成' },
+  { id: 'complete', label: '取り込み結果の確認' },
+] as const
+
+type ImportState =
+  | { status: 'select' }
+  | { status: 'reading', step: SurveyStep }
+  | { status: 'complete', count: number, preview: SurveyPreview }
+  | { status: 'failed', message: string }
+
+interface Props {
+  active: boolean
+  available: boolean
   clientName: string
-  beforeApply: () => Promise<boolean>
-  onApplied: () => void
+  onPreview: (preview: SurveyPreview) => number
+  onIdentity: (sha256: string, confirmed: boolean) => void
+  verifiedSources: ReadonlySet<string>
 }
 
-export function SurveyImport({ document, clientName, beforeApply, onApplied }: SurveyImportProps) {
-  const [preview, setPreview] = useState<SurveyPreview | null>(null)
-  const [selected, setSelected] = useState<Set<SurveyImportKey>>(new Set())
-  const [reviewDoc, setReviewDoc] = useState<DocumentView>(document)
-  const [stale, setStale] = useState(false)
-  const [recordedOn, setRecordedOn] = useState('')
-  const [confirmed, setConfirmed] = useState(false)
-  const [busy, setBusy] = useState<'reading' | 'applying' | null>(null)
-  const [message, setMessage] = useState('')
-  const [error, setError] = useState('')
+export function SurveyImport({ active, available, clientName, onPreview, onIdentity, verifiedSources }: Props) {
+  const [files, setFiles] = useState<Partial<Record<typeof documents[number]['kind'], File>>>({})
+  const [state, setState] = useState<ImportState>({ status: 'select' })
+  const [sources, setSources] = useState<SurveyPreview[]>([])
+  const surveyPicker = useRef<HTMLInputElement>(null)
+  const request = useRef<AbortController | null>(null)
+  const latestPreview = useRef(onPreview)
+  latestPreview.current = onPreview
+  useEffect(() => () => request.current?.abort(), [])
+  useEffect(() => {
+    if (available || !request.current) return
+    request.current.abort()
+    request.current = null
+    setState({ status: 'select' })
+  }, [available])
 
-  const choose = async (file: File) => {
-    setPreview(null)
-    setSelected(new Set())
-    setConfirmed(false)
-    setRecordedOn('')
-    setError('')
-    setMessage('')
-    setBusy('reading')
+  const start = async () => {
+    const file = files.survey
+    if (!file || !available || request.current) return
+    const controller = new AbortController()
+    request.current = controller
+    setState({ status: 'reading', step: 'prepare' })
     try {
       const { readSurvey } = await import('./readSurvey.ts')
-      const result = await readSurvey(file)
-      const latest = await api.document(document.id)
-      setReviewDoc(latest.document)
-      setStale(false)
-      setPreview(result)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'PDFを読み取れませんでした。')
+      const preview = await readSurvey(file, controller.signal, (step) => setState({ status: 'reading', step }))
+      controller.signal.throwIfAborted()
+      const count = latestPreview.current(preview)
+      setSources((previous) => [...previous.filter(({ sha256 }) => sha256 !== preview.sha256), preview])
+      setState({ status: 'complete', count, preview })
+    } catch (error) {
+      if (!controller.signal.aborted) setState({ status: 'failed', message: error instanceof Error ? error.message : 'PDFを読み取れませんでした。' })
     } finally {
-      setBusy(null)
+      if (request.current === controller) request.current = null
     }
   }
 
-  const apply = async () => {
-    if (!preview || stale || busy || !confirmed || !selected.size) return
-    const changes = preview.candidates.flatMap(({ key, choice }) =>
-      choice !== null && selected.has(key) ? [{ key, choice, base: reviewDoc.fields[key]?.value ?? null }] : [],
-    )
-    setBusy('applying')
-    setError('')
-    setMessage('')
-    try {
-      if (!await beforeApply()) throw new Error('用紙の入力を送信できませんでした。用紙の状態を確認してください。')
-      const { document: updated } = await api.importSurvey(document.id, {
-        fileName: preview.fileName, sha256: preview.sha256, recordedOn: recordedOn || null, changes,
-      })
-      setReviewDoc(updated)
-      setSelected(new Set())
-      setMessage(`${changes.length}項目をp.6に反映しました。内容を確認して保存してください。`)
-      onApplied()
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 409) {
-        setSelected(new Set())
-        setConfirmed(false)
-        const latest = await api.document(document.id).catch(() => null)
-        if (latest) setReviewDoc(latest.document)
-        setStale(!latest)
-        setError(latest ? '用紙の値が変わりました。最新の値を見比べて、反映する項目を選び直してください。'
-          : '最新の用紙を取得できません。用紙を読み直してから反映してください。')
-      } else {
-        setError(e instanceof Error ? e.message : '反映できませんでした。')
-      }
-    } finally {
-      setBusy(null)
-    }
+  const cancel = () => {
+    request.current?.abort()
+    request.current = null
+    setState({ status: 'select' })
   }
 
-  const refresh = async () => {
-    setBusy('applying')
-    try {
-      const latest = await api.document(document.id)
-      setReviewDoc(latest.document)
-      setStale(false)
-      setError('最新の値を見比べて、反映する項目を選び直してください。')
-    } catch {
-      setError('最新の用紙を取得できません。時間をおいて読み直してください。')
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  return (
-    <section aria-label="認定調査票の取り込み" className="survey-import">
-      <label>認定調査票のPDFを選ぶ
-        <input type="file" accept="application/pdf,.pdf" disabled={busy !== null}
-          onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ''; if (file) void choose(file) }} />
-      </label>
-      <p>広島市版のテキスト付きPDF（10 MBまで）。移動・食事摂取・排尿の3項目を読み取ります。</p>
-      {busy === 'reading' && <p role="status">読み取り中です…</p>}
-      {error && <p role="alert" className="survey-import-error">{error}</p>}
-      {message && <p role="status">{message}</p>}
-      {stale && <button className="assistant-outline" type="button" disabled={busy !== null} onClick={() => void refresh()}>用紙を読み直す</button>}
-      {preview && (
-        <div className="survey-import-review">
-          <strong>{message ? '反映結果' : '確認待ち'} · {preview.fileName}</strong>
-          <details>
-            <summary>原本p.1で対象者と調査日を確認</summary>
-            <img src={preview.identity} alt="原本p.1の調査日と対象者欄" />
-          </details>
-          <label>調査日（不明なら空欄）
-            <input type="date" value={recordedOn} disabled={busy !== null} onChange={(e) => setRecordedOn(e.target.value)} />
-          </label>
-          <label className="survey-check">
-            <input type="checkbox" checked={confirmed} disabled={busy !== null} onChange={(e) => setConfirmed(e.target.checked)} />
-            原本が{clientName}さんのものだと確認した
-          </label>
-          {preview.candidates.map(({ key, choice, reason, preview: row, note }) => {
-            const value = choice === null ? undefined : surveyChoice(key, choice)
-            const current = reviewDoc.fields[key]?.value ?? null
-            const same = value !== undefined && sameValue(current, value)
-            return (
-              <fieldset key={key} disabled={stale || busy !== null}>
-                <legend>{spec(key)?.label ?? key}</legend>
-                <div>用紙の現在値：{current == null ? '空欄' : String(current)}</div>
-                <div>{reason ? `要確認：${reason}` : `読み取り候補：${value}`}</div>
-                <details>
-                  <summary>原本p.2の印を見る</summary>
-                  <img src={row} alt={`${spec(key)?.label ?? key}の原本の選択欄`} />
-                </details>
-                {note && <p>特記事項 p.3：{note}</p>}
-                {reason ? <small>原本を確認し、必要なら用紙で入力してください。</small> : same ? <small>用紙と同じ値です。</small> : (
-                  <label className="survey-check">
-                    <input type="checkbox" checked={selected.has(key)} onChange={(e) => {
-                      const next = new Set(selected)
-                      if (e.target.checked) next.add(key)
-                      else next.delete(key)
-                      setSelected(next)
+  const selecting = state.status === 'select' || state.status === 'failed'
+  if (selecting) return (
+    <div hidden={!active} className="assistant-import">
+      <PetMessage>アセスメントに反映する書類を取り込みましょう。</PetMessage>
+      <div className="assistant-stack">
+        {documents.map(({ kind, title, description, icon }) => {
+          const selected = files[kind]
+          const action = selected ? '選び直す' : 'ファイルを選択'
+          return (
+            <div className="assistant-file-card" key={kind} data-selected={!!selected}>
+              <span className="assistant-icon-tile"><PetIcon name={icon} library={kind === 'survey' ? 'icons' : 'lucide'} /></span>
+              <div>
+                <strong>{kind === 'nursing' ? <>看護サマリー・<br />退院時情報</> : title}</strong>
+                <small>{description}</small>
+                {kind === 'survey' && <div role="status">
+                  {selected && <>
+                    <small className="assistant-file-status"><PetIcon name="check-circle-fill" />選択済み</small>
+                    <small className="assistant-filename">{selected.name}</small>
+                  </>}
+                </div>}
+              </div>
+              <div className="assistant-file-actions">
+                <label className="assistant-file-picker">
+                  <input ref={kind === 'survey' ? surveyPicker : undefined} type="file" aria-label={`${title}のファイルを${selected ? '選び直す' : '選択'}`}
+                    accept=".pdf,application/pdf" disabled={kind !== 'survey' || !available}
+                    onChange={(e) => {
+                      const file = e.currentTarget.files?.[0]
+                      if (file) {
+                        setFiles((previous) => ({ ...previous, [kind]: file }))
+                        setState({ status: 'select' })
+                      }
+                      e.currentTarget.value = ''
                     }} />
-                    この項目を反映する
-                  </label>
-                )}
-              </fieldset>
-            )
-          })}
-          <button className="assistant-primary" type="button" disabled={stale || !confirmed || !selected.size || busy !== null} onClick={() => void apply()}>
-            {busy === 'applying' ? '反映中…' : `選んだ${selected.size}項目を反映`}
-          </button>
-        </div>
-      )}
-      {SURVEY_IMPORT_KEYS.some((key) => document.fields[key]?.surveySource) && (
-        <details>
-          <summary>現在の値の出典を見る</summary>
-          <ul>
-            {SURVEY_IMPORT_KEYS.map((key) => {
-              const source = document.fields[key]?.surveySource
-              return source && <li key={key}>{spec(key)?.label}：{source.fileName} p.{source.page}、選択肢{source.choice}、調査日 {source.recordedOn ?? '不明'}</li>
-            })}
-          </ul>
-        </details>
-      )}
-    </section>
+                  <span><PetIcon name="folder" />{action}</span>
+                </label>
+                {selected && <button type="button" className="assistant-file-clear" onClick={() => {
+                  setFiles((previous) => ({ ...previous, [kind]: undefined }))
+                  setState({ status: 'select' })
+                  surveyPicker.current?.focus()
+                }}>選択を解除</button>}
+                {kind !== 'survey' && <small>準備中</small>}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+      <div className="assistant-import-notes">
+        <strong><PetIcon name="info-circle" />取り込みのポイント</strong>
+        <p><PetIcon name="check2" />広島市版のテキスト付きPDF（10 MBまで）に対応しています</p>
+      </div>
+      {!available && <p>アセスメントを開くと取り込めます。</p>}
+      {state.status === 'failed' && <p role="alert" className="assistant-error">{state.message}</p>}
+      <button className="assistant-primary" type="button" disabled={!available || !files.survey} onClick={() => void start()}>
+        <PetIcon name="upload" />読み取りを開始
+      </button>
+    </div>
+  )
+
+  const complete = state.status === 'complete'
+  const index = complete ? steps.length : steps.findIndex(({ id }) => id === state.step)
+  return (
+    <div hidden={!active} className="assistant-import assistant-import-progress">
+      <PetMessage>{complete ? '書類を読み取りました。黄色の候補は用紙で確認してください。' : <>書類を読み取っています。<br />完了までお待ちください。</>}</PetMessage>
+      <div className="assistant-progress" aria-live="polite">
+        <div className="assistant-progress-title">{complete ? <PetIcon name="check-circle-fill" /> : <span className="assistant-spinner" />}{complete ? '読み取りが完了しました' : '読み取り中…'}</div>
+        {!complete && <progress aria-label="読み取りの進捗" />}
+        <ol>
+          {steps.map(({ id, label }, i) => (
+            <li key={id} aria-current={i === index ? 'step' : undefined}>
+              {i < index ? <PetIcon name="check-circle-fill" /> : <span className={i === index ? 'assistant-spinner' : 'assistant-step-waiting'} />}
+              <strong>{label}</strong>
+              {i < index ? <small>完了</small> : i === index ? <small>実行中</small> : null}
+            </li>
+          ))}
+        </ol>
+      </div>
+      <div className="assistant-received">
+        <strong>読み取り対象の書類</strong>
+        <div className="assistant-received-row"><PetIcon name="file-earmark-text" /><strong>認定調査票</strong><small><PetIcon name="check2" />受け付け済み</small></div>
+        {complete && [state.preview, ...sources.filter(({ sha256 }) => sha256 !== state.preview.sha256)].map((source) => (
+          <details key={source.sha256} className="assistant-source">
+            <summary>{source.fileName}</summary>
+            <img src={source.identity} alt="認定調査票原本の調査日と対象者欄" />
+            <p>調査日 {source.recordedOn ?? '不明'}</p>
+            <label><input type="checkbox" checked={verifiedSources.has(source.sha256)}
+              onChange={(e) => onIdentity(source.sha256, e.target.checked)} /> 原本が{clientName}さんのものだと確認した</label>
+            {source.candidates.map(({ key, preview, note }) => (
+              <details className="assistant-source-row" key={key}>
+                <summary>{fieldLabel(key)}（原本 p.2）</summary>
+                <img src={preview} alt={`${fieldLabel(key)}の選択欄`} />
+                {note && <p>特記事項 p.3：{note}</p>}
+              </details>
+            ))}
+            {source.sha256 === state.preview.sha256 && (
+              <button className="assistant-new-import" type="button" onClick={() => { setFiles({}); setState({ status: 'select' }) }}>別の書類を選ぶ</button>
+            )}
+          </details>
+        ))}
+      </div>
+      <div className="assistant-import-footer">
+        {complete
+          ? <p role="status"><PetIcon name="check-circle-fill" />取り込み完了（{state.count}か所を反映）</p>
+          : <button type="button" onClick={cancel}><PetIcon name="x-lg" />取り込みを中止</button>}
+      </div>
+    </div>
   )
 }
