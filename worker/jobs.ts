@@ -136,8 +136,10 @@ export async function runJob(deps: WorkerDeps, jobId: string): Promise<void> {
     log({ msg: 'job done', jobId, status, seconds: (Date.now() - t0) / 1000, changes: plan.changes.length, kept: plan.kept.length })
   } catch (e) {
     const kind = (e as Error)?.name ?? 'Error'
-    await db.query("UPDATE jobs SET status = 'failed', error_kind = $2, lease_until = NULL, updated_at = now() WHERE id = $1", [jobId, kind])
-    console.error(JSON.stringify({ severity: 'ERROR', msg: 'job failed', jobId, error: kind }))
+    // 誤りの番号（gRPC・HTTP の状態の番号）だけを足す。文面は中身が入りうるので出さない
+    const code = typeof (e as { code?: unknown })?.code === 'number' ? (e as { code: number }).code : null
+    await db.query("UPDATE jobs SET status = 'failed', error_kind = $2, lease_until = NULL, updated_at = now() WHERE id = $1", [jobId, code === null ? kind : `${kind}:${code}`])
+    console.error(JSON.stringify({ severity: 'ERROR', msg: 'job failed', jobId, error: kind, code }))
     // 中身が入りうるので、ローカルで調べるときだけ出す
     if (process.env.DEBUG_JOBS) console.error(e)
     throw e

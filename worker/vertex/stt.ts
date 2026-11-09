@@ -1,6 +1,7 @@
 // Stt: Cloud Speech-to-Text v2 の BatchRecognize（Chirp 3、日本語、話者分離）。gs:// の録音を、長い処理（operation）として頼む。
 // operation の名前はすぐ onOperation で残す（止まっても、同じ処理を続きから待てる）。ログに中身（文字）は出さない。
 import { v2 } from '@google-cloud/speech'
+import { transcribable } from '../../core/audio.ts'
 import type { SttResult, Stt, Utterance } from '../types.ts'
 
 const MODEL = 'chirp_3'
@@ -79,7 +80,9 @@ export function vertexStt(env: NodeJS.ProcessEnv, opts: SttOptions = {}): Stt {
   const api = () => (client ??= new v2.SpeechClient({ apiEndpoint: `${location}-speech.googleapis.com` }) as unknown as SpeechApi)
 
   return {
-    async transcribe({ uri, sequence, resumeOperation, onOperation }): Promise<SttResult> {
+    async transcribe({ uri, mime, sequence, resumeOperation, onOperation }): Promise<SttResult> {
+      // 受け付けない形式（PC の Chrome の mp4 の Opus など）は、呼んでも断られるので先に止める
+      if (!transcribable(mime)) throw Object.assign(new Error('stt: unsupported audio format'), { name: 'SttUnsupportedAudio' })
       let name = resumeOperation
       if (!name) {
         const [op] = await api().batchRecognize({

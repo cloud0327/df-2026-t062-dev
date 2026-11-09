@@ -4,6 +4,7 @@
 //   - 録音中は画面が消えないようにする（Wake Lock）
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api.ts'
+import { pickRecordingMime } from '../../core/audio.ts'
 
 const CHUNK = 8 * 1024 * 1024 // 256 KiB の倍数
 const DB = 'careman-recordings'
@@ -28,10 +29,9 @@ function idb<T>(fn: (s: IDBObjectStore) => IDBRequest<T>, mode: IDBTransactionMo
 
 interface PendingRec { clientId: string, blob: Blob, mime: string, durationMs: number }
 
+/** 文字起こしできる形式で録る（PC の Chrome は webm の Opus、Safari は mp4 の AAC） */
 function pickMime(): string {
-  const prefs = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus']
-  for (const m of prefs) if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported?.(m)) return m
-  return ''
+  return pickRecordingMime((m) => typeof MediaRecorder !== 'undefined' && !!MediaRecorder.isTypeSupported?.(m))
 }
 
 /** 再開できる送信。進み具合（0〜100）を返す */

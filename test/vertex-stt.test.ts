@@ -46,3 +46,14 @@ test('BatchRecognize: operation の名前をすぐ残し、待って結果を発
   assert.equal(again.utterances.length, 1)
   assert.equal(started, 1)
 })
+
+test('文字起こしできない形式（mp4 の Opus）は、Speech-to-Text を呼ばずに分かる名前の誤りで止める', async () => {
+  let called = 0
+  const client: SpeechApi = {
+    async batchRecognize() { called++; return [{ name: 'op/x' }] },
+    async checkBatchRecognizeProgress() { called++; return { done: true } },
+  }
+  const stt = vertexStt({ GOOGLE_CLOUD_PROJECT: 'p' }, { client, pollMs: 1 })
+  await assert.rejects(stt.transcribe({ uri: 'gs://b/a.m4a', mime: 'audio/mp4;codecs=opus', recordingId: 'x', sequence: 1 }), { name: 'SttUnsupportedAudio' })
+  assert.equal(called, 0)
+})
