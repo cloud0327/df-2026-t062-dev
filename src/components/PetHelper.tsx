@@ -98,10 +98,10 @@ export function PetHelper({ available, clientName, review, topics, onJump, onPre
         {menu === 'interview' && (
           <>
             <PetMessage>空白の項目を埋めるために、<br />面談で確認するとよい話題の例を提案します。</PetMessage>
-            <ul className="assistant-stack">
+            <ul className="assistant-stack assistant-topics">
               {topics.map(({ title, icon, description, keys }) => (
                 <li key={title}>
-                  <div className="assistant-card assistant-topic">
+                  <div className="assistant-topic">
                     <PetIcon name={icon} /><div><h3>{title}</h3><small>{description}</small></div>
                   </div>
                   <ul className="assistant-topic-targets" aria-label={`${title}の入力欄`}>
