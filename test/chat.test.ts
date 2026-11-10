@@ -179,7 +179,7 @@ test('read_form: document で、同じ利用者のほかの書類（アセスメ
   assert.doesNotMatch(chatSystem('admission', []), /ほかの書類:/)
 })
 
-test('read_form: 開いている書類の空の欄は、形（中の項目・選択肢）つきで返す。長すぎる書類（アセスメント）は形を省き、語で絞らせる', async () => {
+test('read_form: 開いている書類の空の欄は、形（中の項目・選択肢）つきで返す。長すぎる書類（アセスメント）は省き、語で絞らせる', async () => {
   const admission: ChatDocument = { kind: 'admission', fields: {} }
   const { model, seen } = scripted([[call('read_form')], [{ text: '読みました' }]])
   await runChat({ model, document: admission, recordings, messages: [{ role: 'user', text: '埋めて' }] })
@@ -192,8 +192,7 @@ test('read_form: 開いている書類の空の欄は、形（中の項目・選
   const big = scripted([[call('read_form')], [{ text: '読みました' }]])
   await runChat({ model: big.model, document: doc, recordings, messages: [{ role: 'user', text: '埋めて' }] })
   const assess = responseOf(big.seen, 1, 'read_form')
-  assert.ok(assess.empty.length > 50)
-  assert.ok(assess.empty.every((f: any) => f.shape === undefined && f.type))
+  assert.equal(assess.empty, undefined, 'アセスメントは前と同じ大きさ（空のまとまりの欄は返さない）')
   assert.match(assess.hint, /query/)
 })
 

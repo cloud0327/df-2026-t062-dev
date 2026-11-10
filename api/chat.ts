@@ -160,9 +160,10 @@ function readForm(doc: ChatDocument, query: unknown, other = false) {
   }
   // ほかの書類には案を出せないので、空の欄は返さない
   if (other) return { document: FORM_NAME[doc.kind], filled }
-  // 空のまとまりの欄も、形つきで返す（1 回読めば案を組み立てられる）。長すぎるときは形を省き、語で絞らせる
+  // 空のまとまりの欄も、形つきで返す（1 回読めば案を組み立てられる）。長すぎるときは省き、語で絞らせる
   if (ts.length || JSON.stringify(empty).length <= SHAPE_BUDGET) return { document: FORM_NAME[doc.kind], filled, emptyText, empty }
-  return { document: FORM_NAME[doc.kind], filled, emptyText, empty: empty.map(({ shape: _, ...e }) => e), hint: '欄が多いので、空の欄の形（中の項目・選択肢）は省いた。query で欄の名前を絞って読むと返す' }
+  // 一覧だけでも長い（アセスメントで約 1 万字。会話のたびに送り直す）ので、空のまとまりの欄は返さない
+  return { document: FORM_NAME[doc.kind], filled, emptyText, hint: '欄が多いので、空のまとまりの欄（選ぶ欄・表など）は省いた。query で欄の名前を絞って読むと、形つきで返す' }
 }
 
 function missingFields(doc: ChatDocument) {
