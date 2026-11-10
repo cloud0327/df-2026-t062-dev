@@ -107,13 +107,33 @@ test('propose_edit: 通る案だけを集め、通らない案は理由を AI �
   assert.deepEqual(doc, before)
 })
 
-test(`道具を呼び続けたら ${MAX_CALLS} 回で止め、そこまでの案は返す`, async () => {
-  let n = 0
-  const model: ChatModel = async () => (++n === 1 ? [call('propose_edit', { key: 'person.lifeHistory', value: '農業を営んできた。' })] : [call('read_form')])
+test(`道具を呼び続けたら、${MAX_CALLS} 回目は道具なしで答えさせる。答えなくても、出した案があれば案を出したと返す`, async () => {
+  const finals: boolean[] = []
+  const model: ChatModel = async ({ final }) => {
+    finals.push(!!final)
+    return finals.length === 1 ? [call('propose_edit', { key: 'person.lifeHistory', value: '農業を営んできた。' })] : [call('read_form')]
+  }
   const r = await runChat({ model, document: doc, recordings, messages: [{ role: 'user', text: '生活歴を書いて' }] })
-  assert.equal(n, MAX_CALLS)
-  assert.match(r.reply, /途中/)
+  assert.equal(finals.length, MAX_CALLS)
+  assert.deepEqual(finals.map((f, i) => [i, f]).filter(([, f]) => f), [[MAX_CALLS - 1, true]], '最後の 1 回だけ道具なし')
   assert.equal(r.proposals.length, 1)
+  assert.doesNotMatch(r.reply, /止まりました/, 'うまくいった案があるのに「止まりました」と言わない')
+  assert.match(r.reply, /用紙に入れる/)
+  // 最後の 1 回で文を返せば、それを返事にする
+  let n = 0
+  const polite: ChatModel = async ({ final }) => (++n, final ? [{ text: '生活歴の案を出しました。' }] : [call('read_form')])
+  assert.equal((await runChat({ model: polite, document: doc, recordings, messages: [{ role: 'user', text: '生活歴は？' }] })).reply, '生活歴の案を出しました。')
+  // 案もなく止まったときだけ「止まりました」
+  const stuck = await runChat({ model: async () => [call('read_form')], document: doc, recordings, messages: [{ role: 'user', text: '？' }] })
+  assert.match(stuck.reply, /途中/)
+})
+
+test('作業ログは、道具を使うたびに onStep で知らせる（画面に少しずつ出す）', async () => {
+  const live: string[] = []
+  const { model } = scripted([[call('read_form')], [call('search_records', { query: '畑' })], [{ text: 'できました' }]])
+  const r = await runChat({ model, document: doc, recordings, messages: [{ role: 'user', text: '畑' }], onStep: (s) => live.push(s) })
+  assert.deepEqual(live, r.steps)
+  assert.equal(live.length, 2)
 })
 
 test('read_form: 用紙に印字するときだけ付く印（家族の主たる介護者の「※」）を知らせる', async () => {

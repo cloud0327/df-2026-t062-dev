@@ -32,6 +32,8 @@ export function PetChat({ documentId, entries, setEntries, current, onSet, onJum
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [stale, setStale] = useState<Set<string>>(new Set())
+  /** 答えを待つ間に届いた作業ログ（届くたびに 1 行ずつ出す） */
+  const [live, setLive] = useState<string[]>([])
   const root = useRef<HTMLDivElement>(null)
   const activeDoc = useRef(documentId)
   activeDoc.current = documentId
@@ -41,7 +43,7 @@ export function PetChat({ documentId, entries, setEntries, current, onSet, onJum
   useLayoutEffect(() => {
     const box = root.current?.closest('.assistant-body')
     if (box) box.scrollTop = box.scrollHeight
-  }, [entries.length, busy, error])
+  }, [entries.length, busy, error, live.length])
 
   const send = async (e?: FormEvent) => {
     e?.preventDefault()
@@ -52,9 +54,10 @@ export function PetChat({ documentId, entries, setEntries, current, onSet, onJum
     setEntries((prev) => [...prev, asked])
     setText('')
     setError('')
+    setLive([])
     setBusy(true)
     try {
-      const r = await api.chat(documentId, history)
+      const r = await api.chat(documentId, history, (s) => { if (activeDoc.current === documentId) setLive((prev) => [...prev, s]) })
       if (activeDoc.current !== documentId) return
       setEntries((prev) => [...prev, { id: nextId++, role: 'pet', text: r.reply, steps: r.steps, proposals: r.proposals.map((p) => ({ ...p, state: 'ready' })) }])
     } catch {
@@ -64,7 +67,7 @@ export function PetChat({ documentId, entries, setEntries, current, onSet, onJum
       setText(question)
       setError('ペットに相談できませんでした。少し待ってから、もう一度送ってください。')
     } finally {
-      if (activeDoc.current === documentId) setBusy(false)
+      if (activeDoc.current === documentId) { setBusy(false); setLive([]) }
     }
   }
 
@@ -119,7 +122,16 @@ export function PetChat({ documentId, entries, setEntries, current, onSet, onJum
             })}
           </li>
         ))}
-        {busy && <li className="assistant-chat-row assistant-chat-pet"><p className="assistant-chat-bubble assistant-chat-thinking"><span className="assistant-spinner" aria-hidden="true" />考えています…</p></li>}
+        {busy && (
+          <li className="assistant-chat-row assistant-chat-pet">
+            {!!live.length && (
+              <ul className="assistant-chat-steps" aria-label="ペットがしていること">
+                {live.map((s, i) => <li key={i}><PetIcon name="check2" />{s}</li>)}
+              </ul>
+            )}
+            <p className="assistant-chat-bubble assistant-chat-thinking"><span className="assistant-spinner" aria-hidden="true" />{live.length ? '調べています…' : '考えています…'}</p>
+          </li>
+        )}
       </ol>
       {error && <p className="assistant-error" role="alert">{error}</p>}
       <form className="assistant-chat-form" onSubmit={send}>

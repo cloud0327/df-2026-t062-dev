@@ -406,15 +406,20 @@ test('認定調査票は確認した欄だけに出典を記録し、409では�
 
 })
 
-test('書き方の相談: エージェントが録音を探し、用紙を読んで案を出す。用紙は変えない', { skip }, async () => {
+test('書き方の相談: エージェントが録音を探し、用紙を読んで案を出す。作業ログを 1 行ずつ流す。用紙は変えない', { skip }, async () => {
   // 佐藤さんには、上のテストで送った録音（fake の文字起こし）がある
   const { id: docId } = await docOf(ids.sato)
   const before = (await call(`/api/documents/${docId}`)).body as Doc
   const ask = (messages: unknown, token?: string) => call(`/api/documents/${docId}/chat`, { method: 'POST', token, body: JSON.stringify({ messages }) })
 
-  const r = await ask([{ role: 'user', text: '相談内容の書き方は？' }, { role: 'pet', text: '本人の言葉で書きます。' }, { role: 'user', text: '相談内容を直して' }])
-  assert.equal(r.status, 200)
-  const body = r.body as { reply: string, steps: string[], proposals: { key: string, label: string, before: string | null, after: string }[] }
+  // 答えは 1 行 1 つの JSON（NDJSON）。道具を使うたびに step を流し、最後に done
+  const res = await fetch(`${origin}/api/documents/${docId}/chat`, { method: 'POST', headers: { Authorization: TOKEN, 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: [{ role: 'user', text: '相談内容の書き方は？' }, { role: 'pet', text: '本人の言葉で書きます。' }, { role: 'user', text: '相談内容を直して' }] }) })
+  assert.equal(res.status, 200)
+  assert.match(res.headers.get('content-type') ?? '', /application\/x-ndjson/)
+  const events = (await res.text()).trim().split('\n').map((l) => JSON.parse(l))
+  assert.deepEqual(events.map((e) => e.type), ['step', 'step', 'step', 'done'])
+  const body = events.at(-1) as { reply: string, steps: string[], proposals: { key: string, label: string, before: string | null, after: string }[] }
+  assert.deepEqual(events.slice(0, -1).map((e) => e.text), body.steps)
   assert.equal(body.reply, '案を出しました。')
   assert.equal(body.steps.length, 3)
   assert.match(body.steps[0], /^録音を探しました「リハビリ」（[1-9]\d* 件）$/, '録音の発言を探せる')

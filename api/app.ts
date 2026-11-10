@@ -169,7 +169,23 @@ export function createApp(deps: ApiDeps) {
     const document = await repo.getDocument(db, staff.officeId, c.req.param('id')!)
     const recordings = await repo.clientTranscripts(db, staff.officeId, document.clientId)
     const model = deps.chat ? await deps.chat() : fakeModel
-    return json(c, await runChat({ model, document, recordings, messages }))
+    // 答えは 1 行 1 つの JSON（NDJSON）。道具を使うたびに {type:'step'} を流し、最後に {type:'done', reply, steps, proposals}。
+    // 途中で失敗したら {type:'error'}（状態はもう 200 なので）。間の置き場がまとめて返しても、画面は最後に全部出すだけで壊れない
+    const enc = new TextEncoder()
+    const stream = new ReadableStream<Uint8Array>({
+      async start(ctl) {
+        const send = (o: object) => ctl.enqueue(enc.encode(`${JSON.stringify(o)}\n`))
+        try {
+          const r = await runChat({ model, document, recordings, messages, onStep: (text) => send({ type: 'step', text }) })
+          send({ type: 'done', ...r })
+        } catch (e) {
+          console.error(JSON.stringify({ severity: 'ERROR', msg: 'api error', path: c.req.routePath, error: (e as Error)?.name ?? 'Error' }))
+          send({ type: 'error' })
+        }
+        ctl.close()
+      },
+    })
+    return new Response(stream, { headers: { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no' } })
   }))
 
   app.post('/api/documents/:id/survey-import', authed(async (c, staff, db) => {

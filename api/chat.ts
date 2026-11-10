@@ -32,11 +32,11 @@ export interface Part {
 }
 export interface Content { role: 'user' | 'model', parts: Part[] }
 export interface ToolDecl { name: string, description: string, parametersJsonSchema: unknown }
-/** 1 回の呼び出し。答えの部品（文か道具の呼び出し）を返す。テストと fake では差し替える */
-export type ChatModel = (req: { system: string, contents: Content[], tools: ToolDecl[] }) => Promise<Part[]>
+/** 1 回の呼び出し。答えの部品（文か道具の呼び出し）を返す。final なら道具を使わせず、文で答えさせる。テストと fake では差し替える */
+export type ChatModel = (req: { system: string, contents: Content[], tools: ToolDecl[], final?: boolean }) => Promise<Part[]>
 
-/** 1 回の相談で Gemini を呼ぶ上限（道具を呼び続けたら止める） */
-export const MAX_CALLS = 6
+/** 1 回の相談で Gemini を呼ぶ上限。最後の 1 回は道具なしで、そこまでのことを文で答えさせる */
+export const MAX_CALLS = 8
 
 const FORM_KEY: Record<FormKind, string> = { assessment: 'assess', admission: 'adm' }
 const TEXT_TYPES = new Set(['text', 'longtext'])
@@ -81,7 +81,8 @@ export function chatSystem(kind: FormKind): string {
 2. 欄を書いて・直して・短くしてなどと頼まれたら、read_form（欄の名前の語で絞る）でその欄の今の値と形を読み、必要なら search_records で根拠を探してから、propose_edit で案を出す。文章の欄だけでなく、相談者・家族の表などのまとまりの欄や選択肢の欄にも案を出せる。value はその欄の新しい値の全体（まとまりの欄は今の値をもとにした JSON）。頼まれていないのに案を出さない。
 3. 用紙に見えている文字が値にないときは、read_form の printed（印字するときだけ付く印などの様式の決まり）を確かめる。印の意味を説明し、それでも消したいと言われたら、印のもとになる項目を変える案を出す。
 4. 足りないところ・埋まっていない欄を聞かれたら、missing_fields を使う。埋め方（面談で聞く／書類から）ごとにまとめて答える。
-5. あなたは用紙に直接は書けない。出した案は、ケアマネが画面の「用紙に入れる」を押したときに入る。保存・PDF・外に送ることもできないので、頼まれたら画面のボタンで行うよう伝える。
+5. 録音がない（recordings: 0）と分かったら、もう search_records を使わない。同じ道具を同じ語で何度も呼ばない。案を出したら、それ以上調べずに答えを書く。
+6. あなたは用紙に直接は書けない。出した案は、ケアマネが画面の「用紙に入れる」を押したときに入る。保存・PDF・外に送ることもできないので、頼まれたら画面のボタンで行うよう伝える。
 
 ## 書き方
 - 文章は、要点を短い文にして「。」でつなぐ。本人・家族の思いや専門職の見立てなど、誰の話かで意味が変わるものは、誰の話か分かるように書く（例:「左側に残渣あり（ST）」）。
@@ -195,23 +196,29 @@ export function checkProposal(doc: ChatDocument, key: unknown, value: unknown): 
 }
 
 const STOPPED = 'ごめんなさい、調べている途中で止まりました。聞きたいことを短くして、もう一度相談してください。'
+const PROPOSED = '書き換えの案を出しました。下のカードを見て、よければ「用紙に入れる」を押してください。'
 const FALLBACK = 'うまく答えられませんでした。言い方を変えて、もう一度聞いてください。'
 
-export async function runChat({ model, document, recordings, messages }: {
+export async function runChat({ model, document, recordings, messages, onStep }: {
   model: ChatModel, document: ChatDocument, recordings: ChatRecording[], messages: ChatMessage[]
+  /** 道具を使うたびに、作業ログの 1 行を知らせる（画面に少しずつ出す） */
+  onStep?: (step: string) => void
 }): Promise<ChatReply> {
   const system = chatSystem(document.kind)
   const contents: Content[] = messages.map((m) => ({ role: m.role === 'user' ? 'user' : 'model', parts: [{ text: m.text }] }))
   const steps: string[] = []
+  const step = (t: string) => { steps.push(t); onStep?.(t) }
   const proposals = new Map<string, ChatProposal>()
   const result = (reply: string): ChatReply => ({ reply, steps, proposals: [...proposals.values()] })
 
   for (let n = 0; n < MAX_CALLS; n++) {
-    const parts = await model({ system, contents, tools: TOOLS })
-    const calls = parts.filter((p) => p.functionCall?.name)
+    const final = n === MAX_CALLS - 1
+    const parts = await model({ system, contents, tools: TOOLS, final })
+    // 最後の 1 回に道具を呼んできても、もう使わない
+    const calls = final ? [] : parts.filter((p) => p.functionCall?.name)
     if (!calls.length) {
       const text = parts.filter((p) => p.text && !p.thought).map((p) => p.text).join('').trim()
-      return result(text || FALLBACK)
+      return result(text || (proposals.size ? PROPOSED : final ? STOPPED : FALLBACK))
     }
     contents.push({ role: 'model', parts })
     const responses: Part[] = []
@@ -220,24 +227,24 @@ export async function runChat({ model, document, recordings, messages }: {
       let response: Record<string, unknown>
       if (name === 'read_form') {
         response = readForm(document, args.query)
-        steps.push(terms(args.query).length ? `用紙を読みました（「${String(args.query).trim()}」）` : '用紙を読みました')
+        step(terms(args.query).length ? `用紙を読みました（「${String(args.query).trim()}」）` : '用紙を読みました')
       } else if (name === 'missing_fields') {
         response = missingFields(document)
-        steps.push(`足りない欄を調べました（${(response.missing as unknown[]).length} 欄）`)
+        step(`足りない欄を調べました（${(response.missing as unknown[]).length} 欄）`)
       } else if (name === 'search_records') {
         response = searchRecords(recordings, args.query)
-        steps.push(`録音を探しました「${String(args.query ?? '').trim()}」（${(response.total as number | undefined) ?? 0} 件）`)
+        step(`録音を探しました「${String(args.query ?? '').trim()}」（${(response.total as number | undefined) ?? 0} 件）`)
       } else if (name === 'propose_edit') {
         const r = checkProposal(document, args.key, args.value)
         if (typeof r === 'string') {
           const f = typeof args.key === 'string' ? BY_KEY.get(args.key) : undefined
           // 欄はあるのに値が通らないときは、欄の形を返して組み立て直させる
           response = { ok: false, reason: r, ...(f?.forms?.[FORM_KEY[document.kind]] && f.type !== 'image' ? { shape: shapeOf(f) } : {}) }
-          steps.push(`案を作れませんでした：${r}`)
+          step(`案を作れませんでした：${r}`)
         } else {
           proposals.set(r.key, r)
           response = { ok: true, message: '案をケアマネの画面に出しました。まだ用紙には入っていません' }
-          steps.push(`書き換えの案を作りました：${r.label}`)
+          step(`書き換えの案を作りました：${r.label}`)
         }
       } else {
         response = { error: `${String(name)} という道具はありません` }
@@ -246,7 +253,7 @@ export async function runChat({ model, document, recordings, messages }: {
     }
     contents.push({ role: 'user', parts: responses })
   }
-  return result(STOPPED)
+  return result(proposals.size ? PROPOSED : STOPPED)
 }
 
 /** AI_PROVIDER=fake: 費用をかけずに画面を試す偽の Gemini。「直して」なら用紙を読んで案を出し、「足りない」なら足りない欄を調べる */
