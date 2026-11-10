@@ -166,6 +166,20 @@ resource "google_storage_bucket_iam_member" "worker_source" {
   member = "serviceAccount:${google_service_account.worker.email}"
 }
 
+# BatchRecognize reads the gs:// input as the Speech-to-Text service agent,
+# not as the worker runtime identity. Grant access only on the source bucket.
+resource "google_storage_bucket_iam_member" "speech_source_bucket_viewer" {
+  bucket = google_storage_bucket.source.name
+  role   = "roles/storage.bucketViewer"
+  member = "serviceAccount:service-${data.google_project.this.number}@gcp-sa-speech.iam.gserviceaccount.com"
+}
+
+resource "google_storage_bucket_iam_member" "speech_source_object_viewer" {
+  bucket = google_storage_bucket.source.name
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:service-${data.google_project.this.number}@gcp-sa-speech.iam.gserviceaccount.com"
+}
+
 resource "google_storage_bucket_iam_member" "worker_work" {
   bucket = google_storage_bucket.work.name
   role   = "roles/storage.objectAdmin"

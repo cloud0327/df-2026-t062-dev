@@ -71,7 +71,6 @@ button.assistant-card:hover, .assistant-header button:hover { border-color: #bda
 .assistant-topic h3 { margin: 0; }
 .assistant-topic small { margin-top: 3px; font-size: 13px; }
 .assistant-menu .assistant-card { min-height: 89px; padding: 13px clamp(12px, 8cqw, 33px); gap: 21px; background: #fff; }
-.assistant-menu .assistant-card:first-child { border-color: #9a58e7; box-shadow: inset 0 0 0 1px #9a58e7, var(--pet-shadow); background: #f4edff; }
 .assistant-menu .assistant-card strong { font-size: clamp(18px, 5.8cqw, 24px); }
 .assistant-menu .assistant-card small { font-size: clamp(14px, 4.5cqw, 18px); font-weight: 700; }
 .assistant-menu .assistant-card > .assistant-icon:first-child { font-size: clamp(25px, 10cqw, 40px); }
@@ -83,10 +82,11 @@ button.assistant-card:hover, .assistant-header button:hover { border-color: #bda
 }
 .assistant-review-tabs button[aria-pressed=true], .assistant-panel .assistant-primary { background: #580bdd; color: #fff; }
 .assistant-review-tabs button[aria-pressed=false] .assistant-icon { color: var(--pet-purple); }
-.assistant-review-card { grid-template-columns: 14px minmax(0, 1fr) minmax(0, 1.15fr) auto; min-height: 57px; gap: 10px; border-radius: 13px; }
-.assistant-review-card strong { font-size: 16px; }
-.assistant-review-card span { overflow-wrap: anywhere; }
-.assistant-review-card small { color: #643b76; }
+.assistant-review-card { grid-template-columns: 16px minmax(0, 1fr) auto; min-height: 57px; gap: 10px; border-radius: 13px; }
+.assistant-review-content { display: flex; min-width: 0; flex-direction: column; align-items: flex-start; gap: 3px; }
+.assistant-review-card .assistant-review-content strong { font-size: 16px; }
+.assistant-review-card .assistant-review-value { display: -webkit-box; width: 100%; min-width: 0; overflow: hidden; overflow-wrap: anywhere; color: #29243a; line-height: 1.45; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+.assistant-review-card .assistant-review-content small { display: -webkit-box; max-width: 100%; overflow: hidden; overflow-wrap: anywhere; color: #643b76; -webkit-box-orient: vertical; -webkit-line-clamp: 1; }
 .assistant-review-card > .assistant-icon:first-child { font-size: 16px; }
 .assistant-review-dot { width: 16px; height: 16px; border-radius: 50%; background: #f4bb08; }
 .assistant-panel .assistant-topic-targets { padding: 4px 8px; }

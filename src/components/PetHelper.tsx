@@ -91,8 +91,12 @@ export function PetHelper({ available, clientName, review, topics, onJump, onPre
               {review.filter((item) => item.confirmed === confirmed).map(({ key, value, reason }) => (
                 <li key={key}><button type="button" className="assistant-card assistant-review-card" onClick={() => jump(key)}>
                   {confirmed ? <PetIcon name="check2" /> : <span className="assistant-review-dot" />}
-                  <strong>{fieldLabel(key)}</strong>
-                  <span>{value}{reason && <small>{reason}</small>}</span><PetIcon name="chevron-right" />
+                  <span className="assistant-review-content">
+                    <strong>{fieldLabel(key)}</strong>
+                    <span className="assistant-review-value" title={value}>{value}</span>
+                    {reason && <small>{reason}</small>}
+                  </span>
+                  <PetIcon name="chevron-right" />
                 </button></li>
               ))}
             </ul>

@@ -445,9 +445,9 @@ export function useDocument(docId: string | undefined) {
     return true
   }, [form, loadAssets])
 
-  /** 差分の欄として出す、AI が書いた長い文章の欄か */
+  /** AI が書いた、差分表示に対応する文章欄または単行欄か */
   const diffOf = useCallback((s: SlotView): { key: string, before: string, after: string, ai: string } | null => {
-    if (s.kind !== 'area' || s.binding?.op !== 'text@1' || s.binding.ref.path?.length) return null
+    if ((s.kind !== 'area' && s.kind !== 'text') || s.binding?.op !== 'text@1' || s.binding.ref.path?.length) return null
     const key = s.binding.ref.key
     const f = doc?.fields[key]
     const after = typeof current[key] === 'string' ? (current[key] as string) : ''
