@@ -212,24 +212,60 @@ async function check(ctx: Ctx, id: string, specs: Spec[], written: Record<string
 }
 
 /** 読み直しの答えで、ok でない単位を落とし、ok の単位に見つけた根拠を欄の根拠に足す。答えのない単位は残す */
+
+/** 読み直しで確認できなかった単位は落とす。有効な根拠がある値だけを採用する */
 function applyChecks(ctx: Ctx, specs: Spec[], written: Record<string, Rec>, r: unknown, known: Set<string>): Record<string, Rec> {
   const verdicts = new Map<unknown, Record<string, unknown>>()
-  if (isRecord(r) && Array.isArray(r.checks)) for (const c of r.checks) if (isRecord(c)) verdicts.set(c.id, c)
+  if (isRecord(r) && Array.isArray(r.checks)) {
+    for (const c of r.checks) {
+      if (isRecord(c)) verdicts.set(c.id, c)
+    }
+  }
+
   const out: Record<string, Rec> = {}
+
   for (const s of specs) {
     const rec = written[s.key]
     const drop = new Set<string>()
     const found: string[] = []
+
     for (const a of atoms(s, rec.value)) {
       const c = verdicts.get(s.key + a.path)
-      if (!c) { bump(ctx, '読み直しの答えがない'); ctx.incompleteFields.add(s.key) }
-      else if (c.verdict !== 'ok') { drop.add(a.path); ctx.incompleteFields.add(s.key); bump(ctx, `落とした:${String(c.verdict)}`) }
-      else found.push(...(Array.isArray(c.from) ? c.from : []).filter((i): i is string => typeof i === 'string' && known.has(i)))
+
+      if (!c) {
+        // 検証結果がなければ、確認できていないので採用しない
+        drop.add(a.path)
+        ctx.incompleteFields.add(s.key)
+        bump(ctx, '読み直しの答えがない')
+      } else if (c.verdict !== 'ok') {
+        // 検証結果が ok 以外なら採用しない
+        drop.add(a.path)
+        ctx.incompleteFields.add(s.key)
+        bump(ctx, `落とした:${String(c.verdict)}`)
+      } else {
+        const verified = (Array.isArray(c.from) ? c.from : [])
+          .filter((i): i is string => typeof i === 'string' && known.has(i))
+
+        // 最初の出力にも読み直し結果にも有効な根拠がない
+        if (rec.cite.length === 0 && verified.length === 0) {
+          drop.add(a.path)
+          ctx.incompleteFields.add(s.key)
+          bump(ctx, '根拠を確認できない')
+        } else {
+          found.push(...verified)
+        }
+      }
     }
-    out[s.key] = { value: dropAtoms(s, rec.value, drop), cite: [...new Set([...rec.cite, ...found])] }
+
+    out[s.key] = {
+      value: dropAtoms(s, rec.value, drop),
+      cite: [...new Set([...rec.cite, ...found])],
+    }
   }
+
   return out
 }
+
 
 /**
  * 書いた・直した欄を、まとまりごとに読み直す。読み直しの呼び出しが失敗したまとまりの欄は、確かめられないので入れない（failed に check:<id>）。

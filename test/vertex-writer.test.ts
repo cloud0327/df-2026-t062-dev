@@ -1,3 +1,65 @@
+
+test('根拠IDがないAIの値は採用しない', async () => {
+  const handler: Handler = (_p, schema, m) => {
+    if (m.step === '欄の値') {
+      return Object.fromEntries(
+        Object.keys(schema.properties).map((key) => [
+          key,
+          { value: key === text.key ? '根拠のない文章。' : null, from: [] },
+        ]),
+      )
+    }
+    if (m.step === '読み直し') {
+      return {
+        checks: schema.properties.checks.items.properties.id.enum.map(
+          (id: string) => ({ id, verdict: 'ok', from: [] }),
+        ),
+      }
+    }
+    return {}
+  }
+
+  const r = await sheetWriter(fakeLlm(handler)).write({
+    visits: [v1],
+    newVisitId: 'v1',
+    current: {},
+    people,
+    first: true,
+  })
+
+  assert.equal(r.values[text.key], undefined)
+})
+
+test('読み直しの検証結果がないAIの値は採用しない', async () => {
+  const handler: Handler = (_p, schema, m) => {
+    if (m.step === '欄の値') {
+      return Object.fromEntries(
+        Object.keys(schema.properties).map((key) => [
+          key,
+          {
+            value: key === text.key ? '左半身が動きにくい。' : null,
+            from: key === text.key ? ['s1-1'] : [],
+          },
+        ]),
+      )
+    }
+    if (m.step === '読み直し') {
+      return { checks: [] }
+    }
+    return {}
+  }
+
+  const r = await sheetWriter(fakeLlm(handler)).write({
+    visits: [v1],
+    newVisitId: 'v1',
+    current: {},
+    people,
+    first: true,
+  })
+
+  assert.equal(r.values[text.key], undefined)
+})
+
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { ZERO_USAGE, type Person, type Visit } from '../worker/types.ts'
@@ -228,4 +290,41 @@ test('話した人: 知っている人はそのまま、新しい人は役割つ
   const r = await speakerAssigner(fakeLlm(handler)).assign({ utterances: [u('speaker_1'), u('speaker_2'), u('speaker_3')], people })
   assert.deepEqual(r.map, { speaker_1: '甲斐', speaker_2: '長男の妻', speaker_3: null })
   assert.deepEqual(r.newPeople, [{ label: '長男の妻', role: '家族', relation: '長男の妻' }])
+})
+
+test('最初の根拠が空でも読み直しで根拠が見つかれば採用する', async () => {
+  const handler: Handler = (_p, schema, m) => {
+    if (m.step === '欄の値') {
+      return Object.fromEntries(
+        Object.keys(schema.properties).map((key) => [
+          key,
+          {
+            value: key === text.key ? '左半身が動きにくい。' : null,
+            from: [],
+          },
+        ]),
+      )
+    }
+    if (m.step === '読み直し') {
+      return {
+        checks: schema.properties.checks.items.properties.id.enum.map(
+          (id: string) => ({ id, verdict: 'ok', from: ['s1-1'] }),
+        ),
+      }
+    }
+    return {}
+  }
+
+  const r = await sheetWriter(fakeLlm(handler)).write({
+    visits: [v1],
+    newVisitId: 'v1',
+    current: {},
+    people,
+    first: true,
+  })
+
+  assert.deepEqual(r.values[text.key], {
+    value: '左半身が動きにくい。',
+    cite: ['s1-1'],
+  })
 })
