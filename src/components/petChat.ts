@@ -3,7 +3,7 @@
 import type { ChatMessage, ChatProposal } from '../../api/chat.ts'
 import { splitSentences } from '../../core/diff.ts'
 import { BY_KEY, subFieldsOf, type FieldSpec } from '../../core/fields.ts'
-import { sameValue } from '../../core/normalize.ts'
+import { sameValue } from '../../core/apply-batch.ts'
 
 /** ready: まだ入れていない／applied: 用紙に入れた（「戻す」ができる） */
 export type CardState = 'ready' | 'applied'

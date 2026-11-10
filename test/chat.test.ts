@@ -145,6 +145,37 @@ test('read_form: 用紙に印字するときだけ付く印（家族の主たる
   assert.match(chatSystem('assessment'), /printed/)
 })
 
+test('read_form: document で、同じ利用者のほかの書類（アセスメント）も読める。案は開いている書類の欄だけ', async () => {
+  const admission: ChatDocument = { kind: 'admission', fields: { 'person.interests': { value: null, by: 'ai' } } }
+  const { model, seen } = scripted([
+    [call('read_form', { document: 'assessment', query: '相談' })],
+    [call('read_form', { document: 'monitoring' }), call('read_form', { document: 'admission', query: '趣味' })],
+    [call('propose_edit', { key: 'person.interests', value: '畑仕事（本人）。' }), call('propose_edit', { key: 'complaint.person', value: '家に帰りたい（本人）。' })],
+    [{ text: '流用の案を出しました。' }],
+  ])
+  const r = await runChat({ model, document: admission, others: [doc], recordings, messages: [{ role: 'user', text: 'アセスメントから流用して' }] })
+  const other = responseOf(seen, 1, 'read_form')
+  assert.equal(other.document, 'アセスメント')
+  assert.ok(other.filled.some((f: any) => f.key === 'complaint.person' && f.value === '家に帰りたい。'))
+  assert.equal(other.emptyText, undefined, 'ほかの書類の空欄は返さない（案を出せないので）')
+  const [missing, self] = seen[2].contents.at(-1)!.parts.map((p) => p.functionResponse!.response as Record<string, any>)
+  assert.match(String(missing.error), /ありません/)
+  assert.deepEqual(missing.documents, ['admission', 'assessment'])
+  assert.equal(self.document, '入院時情報提供書')
+  assert.ok(self.emptyText.some((f: any) => f.key === 'person.interests'))
+  assert.deepEqual(r.proposals.map((p) => p.key), ['person.interests'])
+  assert.deepEqual(r.steps, [
+    '用紙を読みました（アセスメント「相談」）',
+    '用紙を読めませんでした：monitoring',
+    '用紙を読みました（「趣味」）',
+    '書き換えの案を作りました：趣味・興味・関心',
+    '案を作れませんでした：相談内容（本人）（この書類にない欄です）',
+  ])
+  // 指示文に、読めるほかの書類を書く
+  assert.match(seen[0].system, /ほかの書類[^\n]*アセスメント（document: "assessment"）/)
+  assert.doesNotMatch(chatSystem('admission', []), /ほかの書類:/)
+})
+
 test('書き換えの案の確かめ: 文章の欄は文、選択肢の欄は選択肢の文字、まとまりの欄は今の値と同じ形の JSON', () => {
   assert.deepEqual(checkProposal(doc, 'intake.method', '電話'), { key: 'intake.method', label: '相談受付の方法', before: '訪問', after: '電話' })
   // 相談者（object）: 空の項目は落とす

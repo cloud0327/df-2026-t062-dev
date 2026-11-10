@@ -163,11 +163,12 @@ export function createApp(deps: ApiDeps) {
     return json(c, { ...r, document: await repo.getDocument(db, staff.officeId, c.req.param('id')!) })
   }))
 
-  // 書き方の相談。AI が道具（用紙を読む・足りない欄・録音を探す・書き換えの案）を使って答える。用紙は変えない
+  // 書き方の相談。AI が道具（用紙を読む・足りない欄・録音を探す・書き換えの案）を使って答える。同じ利用者のほかの書類も読める。用紙は変えない
   app.post('/api/documents/:id/chat', authed(async (c, staff, db) => {
     const { messages } = await body(c, ChatInput)
     const document = await repo.getDocument(db, staff.officeId, c.req.param('id')!)
     const recordings = await repo.clientTranscripts(db, staff.officeId, document.clientId)
+    const others = await repo.otherDocuments(db, staff.officeId, document.clientId, document.id)
     const model = deps.chat ? await deps.chat() : fakeModel
     // 答えは 1 行 1 つの JSON（NDJSON）。道具を使うたびに {type:'step'} を流し、最後に {type:'done', reply, steps, proposals}。
     // 途中で失敗したら {type:'error'}（状態はもう 200 なので）。間の置き場がまとめて返しても、画面は最後に全部出すだけで壊れない
@@ -176,7 +177,7 @@ export function createApp(deps: ApiDeps) {
       async start(ctl) {
         const send = (o: object) => ctl.enqueue(enc.encode(`${JSON.stringify(o)}\n`))
         try {
-          const r = await runChat({ model, document, recordings, messages, onStep: (text) => send({ type: 'step', text }) })
+          const r = await runChat({ model, document, others, recordings, messages, onStep: (text) => send({ type: 'step', text }) })
           send({ type: 'done', ...r })
         } catch (e) {
           console.error(JSON.stringify({ severity: 'ERROR', msg: 'api error', path: c.req.routePath, error: (e as Error)?.name ?? 'Error' }))
