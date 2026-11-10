@@ -23,6 +23,9 @@ const TOKEN = 'Bearer dev:kato@example.com'
 const OTHER = 'Bearer dev:other@example.com'
 let failNextEnqueue = false
 const enqueues = new Map<string, number>()
+/** チャットのエージェントに返した道具の答え（search_records） */
+const searchResults: Record<string, unknown>[] = []
+const crossReads: Record<string, unknown>[] = []
 
 const call = async (path: string, init: RequestInit & { token?: string } = {}) => {
   const res = await fetch(`${origin}${path}`, {
@@ -86,6 +89,26 @@ before(async () => {
         await queue.enqueue(id)
       },
     }),
+    // 台本: 録音を探してから、用紙を読んで案を出す
+    chat: async () => async ({ contents }) => {
+      const res = contents.at(-1)!.parts.find((p) => p.functionResponse)?.functionResponse
+      // 台本 2: 「流用」なら、ほかの書類（アセスメント）を読むだけ
+      if (/流用/.test(contents[0].parts[0].text ?? '')) {
+        if (!res) return [{ functionCall: { name: 'read_form', args: { document: 'assessment' } } }]
+        crossReads.push(res.response)
+        return [{ text: '読みました。' }]
+      }
+      if (!res) return [{ functionCall: { name: 'search_records', args: { query: 'リハビリ' } } }]
+      if (res.name === 'search_records') {
+        searchResults.push(res.response)
+        return [{ functionCall: { name: 'read_form', args: {} } }]
+      }
+      if (res.name === 'read_form') {
+        const t = (res.response.filled as { key: string, type: string, value: string }[]).find((f) => f.type === 'longtext')!
+        return [{ functionCall: { name: 'propose_edit', args: { key: t.key, value: `${t.value}（直した）` } } }]
+      }
+      return [{ text: '案を出しました。' }]
+    },
     devAuth: true,
   })
   server.listen(0, '127.0.0.1')
@@ -378,4 +401,56 @@ test('認定調査票は確認した欄だけに出典を記録し、409では�
   })
   assert.equal(edited.status, 200)
   assert.equal(edited.body.document.fields['survey.2_2'].surveySource, undefined)
+
+  assert.equal((await call(path + '/save', { method: 'POST', body: JSON.stringify({ scope: 'page', page: 6 }) })).status, 200)
+  assert.equal((await call(path + '/fields', {
+    method: 'PATCH', body: JSON.stringify({ changes: [{ key: 'survey.2_2', value: null, base: '一部介助' }] }),
+  })).status, 200)
+  assert.equal((await post([{ key: 'survey.2_2', choice: 2, base: null }])).status, 409)
+  const cleared = (await call(path)).body.document
+  assert.equal(cleared.fields['survey.2_2'], undefined)
+  assert.equal(cleared.saved['survey.2_2'].value, '一部介助')
+
+})
+
+test('書き方の相談: エージェントが録音を探し、用紙を読んで案を出す。作業ログを 1 行ずつ流す。用紙は変えない', { skip }, async () => {
+  // 佐藤さんには、上のテストで送った録音（fake の文字起こし）がある
+  const { id: docId } = await docOf(ids.sato)
+  const before = (await call(`/api/documents/${docId}`)).body as Doc
+  const ask = (messages: unknown, token?: string) => call(`/api/documents/${docId}/chat`, { method: 'POST', token, body: JSON.stringify({ messages }) })
+
+  // 答えは 1 行 1 つの JSON（NDJSON）。道具を使うたびに step を流し、最後に done
+  const res = await fetch(`${origin}/api/documents/${docId}/chat`, { method: 'POST', headers: { Authorization: TOKEN, 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: [{ role: 'user', text: '相談内容の書き方は？' }, { role: 'pet', text: '本人の言葉で書きます。' }, { role: 'user', text: '相談内容を直して' }] }) })
+  assert.equal(res.status, 200)
+  assert.match(res.headers.get('content-type') ?? '', /application\/x-ndjson/)
+  const events = (await res.text()).trim().split('\n').map((l) => JSON.parse(l))
+  assert.deepEqual(events.map((e) => e.type), ['step', 'step', 'step', 'done'])
+  const body = events.at(-1) as { reply: string, steps: string[], proposals: { key: string, label: string, before: string | null, after: string }[] }
+  assert.deepEqual(events.slice(0, -1).map((e) => e.text), body.steps)
+  assert.equal(body.reply, '案を出しました。')
+  assert.equal(body.steps.length, 3)
+  assert.match(body.steps[0], /^録音を探しました「リハビリ」（[1-9]\d* 件）$/, '録音の発言を探せる')
+  assert.equal(body.proposals.length, 1)
+  const [p] = body.proposals
+  assert.equal(p.before, before.document.fields[p.key].value)
+  assert.notEqual(p.after, p.before)
+  assert.equal((searchResults.at(-1)!.hits as { id: string }[])[0].id.startsWith('r1-'), true)
+  assert.deepEqual(((await call(`/api/documents/${docId}`)).body as Doc).document.fields, before.document.fields)
+
+  assert.equal((await ask([{ role: 'user', text: 'a' }], OTHER)).status, 404)
+  assert.equal((await ask([])).status, 400)
+  assert.equal((await ask([{ role: 'pet', text: '最後がペット' }])).status, 400)
+})
+
+test('書き方の相談: 入院時情報提供書から、同じ利用者のアセスメントを読める', { skip }, async () => {
+  // 甲斐さんには、上のテストで作った入院時情報提供書がある
+  const adm = await docOf(ids.kai, 'admission')
+  const assessment = ((await call(`/api/documents/${(await docOf(ids.kai)).id}`)).body as Doc).document
+  const res = await fetch(`${origin}/api/documents/${adm.id}/chat`, { method: 'POST', headers: { Authorization: TOKEN, 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: [{ role: 'user', text: 'アセスメントから流用して' }] }) })
+  const events = (await res.text()).trim().split('\n').map((l) => JSON.parse(l))
+  assert.deepEqual(events.map((e) => e.steps ?? e.text), ['用紙を読みました（アセスメント）', ['用紙を読みました（アセスメント）']])
+  const read = crossReads.at(-1) as { document: string, filled: { key: string, value: string }[] }
+  assert.equal(read.document, 'アセスメント')
+  const lifeHistory = read.filled.find((f) => f.key === 'person.lifeHistory')
+  assert.equal(lifeHistory?.value, assessment.fields['person.lifeHistory'].value, 'アセスメントの値を読む')
 })

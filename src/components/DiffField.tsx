@@ -1,7 +1,7 @@
 // 差分のふきだし（キャンバスの部品 DiffField を React に移したもの）。
 // AI が書いた長い文章の欄で、保存した文から変わったところに緑の下線を引く。押すとふきだしで前の文と今の文を並べ、
 // その 1 か所を保存するか、前の文に戻す。欄はそのまま手入力できる（印は後ろの層に描くので、日本語の変換が切れない）。
-import { useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { revertHunk, sentenceDiff, type Hunk } from '../../core/diff.ts'
 import { scaled, useFitScale } from '../form/fit.ts'
 
@@ -16,6 +16,9 @@ interface Props {
   lineHeight: number
   padding: string
   fill?: boolean
+  /** 文章欄ではなく、1 行 input の差分表示として使う */
+  singleLine?: boolean
+  textAlign?: 'left' | 'center' | 'right'
   touch?: boolean
   disabled?: boolean
   onChange: (text: string) => void
@@ -37,6 +40,7 @@ function sentence(t: string, s: number, e: number) {
 
 const SANS = "'Noto Sans JP',sans-serif"
 const SERIF = "'Noto Serif JP','Hiragino Mincho ProN','Yu Mincho',serif"
+const DIFF_ROW_GRID: CSSProperties = { display: 'grid', gridTemplateColumns: '1.3em max-content minmax(0,1fr)', gap: 6, padding: '4px 10px', fontFamily: SERIF, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }
 
 export function DiffField(p: Props) {
   const text = p.after
@@ -49,6 +53,7 @@ export function DiffField(p: Props) {
   const [note, setNote] = useState('')
   const [focus, setFocus] = useState(false)
   const ta = useRef<HTMLTextAreaElement>(null)
+  const root = useRef<HTMLDivElement>(null)
   const fit = useFitScale(ta, p.fontSize, text)
 
   const setOpen = (i: number) => {
@@ -57,8 +62,20 @@ export function DiffField(p: Props) {
   }
   const cur = open >= 0 && open < hunks.length ? open : -1
 
-  const caret = (el: HTMLTextAreaElement, fromClick: boolean) => {
-    const pos = el.selectionStart
+  useEffect(() => {
+    if (!p.singleLine || cur < 0) return
+    const closeOutside = (event: PointerEvent) => {
+      if (event.target instanceof Node && !root.current?.contains(event.target)) {
+        setOpen(-1)
+        setClosed(-1)
+      }
+    }
+    document.addEventListener('pointerdown', closeOutside)
+    return () => document.removeEventListener('pointerdown', closeOutside)
+  }, [p.singleLine, cur])
+
+  const caret = (el: HTMLTextAreaElement | HTMLInputElement, fromClick: boolean) => {
+    const pos = el.selectionStart ?? 0
     let hit = hunks.findIndex((h) => pos > h.s && pos < h.e)
     if (hit < 0 && fromClick) hit = hunks.findIndex((h) => pos >= h.s && pos <= h.e)
     if (hit >= 0) {
@@ -101,24 +118,39 @@ export function DiffField(p: Props) {
   const hasBelow = !!pop || !!undo || !!note
 
   return (
-    <div style={{ position: 'relative', fontFamily: "'Noto Sans JP',system-ui,sans-serif", color: '#1C2229', ...(fill ? { width: '100%', height: '100%' } : { width: '100%', display: 'flex', flexDirection: 'column', gap: 6 }) }}>
+    <div ref={root} style={{ position: 'relative', fontFamily: "'Noto Sans JP',system-ui,sans-serif", color: '#1C2229', ...(fill ? { width: '100%', height: '100%' } : { width: '100%', display: 'flex', flexDirection: 'column', gap: 6 }) }}>
       <div style={fill ? { height: '100%' } : { display: 'grid', gridTemplateColumns: 'minmax(0,1fr)', border: '1px solid #2B3138' }}>
         <div style={{ display: 'grid', position: 'relative', transition: 'background .2s', minWidth: 0, ...(fill ? { height: '100%', borderRadius: 2, overflow: 'hidden', gridTemplateRows: 'minmax(0, 1fr)' } : { minHeight: '5.6em' }), ...(pendingBg ? { background: pendingBg } : idle), ...(focus ? { boxShadow: 'inset 0 0 0 2px #2C5A86' } : {}) }}>
-          <div aria-hidden="true" style={{ ...metrics, color: 'transparent', pointerEvents: 'none', overflow: 'hidden' }}>
+          <div aria-hidden="true" style={{ ...metrics, color: 'transparent', pointerEvents: 'none', overflow: 'hidden', ...(p.singleLine ? { visibility: 'hidden' } : {}) }}>
             {segs.map((g, i) => <span key={i} style={g.style}>{g.t}</span>)}
           </div>
-          <textarea
-            ref={ta}
-            aria-label={`${p.label}${hunks.length ? '（変更あり。変更箇所を選択すると比較できます）' : ''}`}
-            value={text}
-            disabled={p.disabled}
-            onChange={(e) => { setUndo(null); setNote(''); p.onChange(e.target.value) }}
-            onClick={(e) => caret(e.currentTarget, true)}
-            onKeyUp={(e) => { if (/^(Arrow|Home|End)/.test(e.key)) caret(e.currentTarget, false) }}
-            onFocus={() => setFocus(true)}
-            onBlur={() => setFocus(false)}
-            style={{ ...metrics, width: '100%', height: '100%', background: 'transparent', color: '#1A3FA0', caretColor: '#1A3FA0', resize: 'none', overflow: 'hidden', outline: 'none' }}
-          />
+          {p.singleLine ? (
+            <input
+              type="text"
+              aria-label={`${p.label}${hunks.length ? '（変更あり。変更箇所を選択すると比較できます）' : ''}`}
+              value={text}
+              disabled={p.disabled}
+              onChange={(e) => { setUndo(null); setNote(''); p.onChange(e.target.value) }}
+              onClick={(e) => caret(e.currentTarget, true)}
+              onKeyUp={(e) => { if (/^(Arrow|Home|End)/.test(e.key)) caret(e.currentTarget, false) }}
+              onFocus={() => setFocus(true)}
+              onBlur={() => setFocus(false)}
+              style={{ ...metrics, textAlign: p.textAlign, whiteSpace: 'nowrap', overflow: 'hidden', width: '100%', height: '100%', background: 'transparent', color: '#1A3FA0', caretColor: '#1A3FA0', outline: 'none' }}
+            />
+          ) : (
+            <textarea
+              ref={ta}
+              aria-label={`${p.label}${hunks.length ? '（変更あり。変更箇所を選択すると比較できます）' : ''}`}
+              value={text}
+              disabled={p.disabled}
+              onChange={(e) => { setUndo(null); setNote(''); p.onChange(e.target.value) }}
+              onClick={(e) => caret(e.currentTarget, true)}
+              onKeyUp={(e) => { if (/^(Arrow|Home|End)/.test(e.key)) caret(e.currentTarget, false) }}
+              onFocus={() => setFocus(true)}
+              onBlur={() => setFocus(false)}
+              style={{ ...metrics, width: '100%', height: '100%', background: 'transparent', color: '#1A3FA0', caretColor: '#1A3FA0', resize: 'none', overflow: 'hidden', outline: 'none' }}
+            />
+          )}
         </div>
       </div>
       {hasBelow && (
@@ -138,14 +170,14 @@ export function DiffField(p: Props) {
                 </span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', fontSize: t ? 17 : 13.5 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1.3em 6.2em minmax(0,1fr)', gap: 6, padding: '4px 10px', fontFamily: SERIF, background: '#FBE3E1', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                <div style={{ ...DIFF_ROW_GRID, background: '#FBE3E1' }}>
                   <span style={{ fontFamily: SANS, fontWeight: 700, color: '#B02A22' }}>−</span>
                   <span style={{ fontFamily: SANS, fontSize: 11, color: '#5B6672', paddingTop: 3 }}>前の文</span>
                   <span>{(pop.ctx.before + pop.h.del + pop.ctx.after).trim()
                     ? <><span>{pop.ctx.before}</span><span style={{ textDecoration: 'line-through', textDecorationThickness: 1, background: 'rgba(176,42,34,0.22)', color: '#B02A22' }}>{pop.h.del}</span><span>{pop.ctx.after}</span></>
-                    : <span style={{ color: '#5B6672', fontFamily: SANS, fontSize: 12 }}>（なし）</span>}</span>
+                    : <span aria-label="変更前は空欄" style={{ display: 'block', minHeight: '1.5em' }} />}</span>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1.3em 6.2em minmax(0,1fr)', gap: 6, padding: '4px 10px', fontFamily: SERIF, background: '#DCF2E4', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                <div style={{ ...DIFF_ROW_GRID, background: '#DCF2E4' }}>
                   <span style={{ fontFamily: SANS, fontWeight: 700, color: '#17703F' }}>＋</span>
                   <span style={{ fontFamily: SANS, fontSize: 11, color: '#5B6672', paddingTop: 3 }}>{pop.fixed ? '直した文' : 'AI の文'}</span>
                   <span>{(pop.ctx.before + pop.now + pop.ctx.after).trim()

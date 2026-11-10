@@ -33,3 +33,14 @@ export function normalizeValue(key: string, value: unknown): unknown {
   if (key === 'dailySchedule' && Array.isArray(value)) return mergeSchedule(value as Row[])
   return value
 }
+
+const isBlank = (v: unknown) => v === null || v === undefined || v === ''
+
+/** まとまりの欄（object・list）の空の項目（null・undefined・空文字）を落とす。表の行そのものは落とさない */
+export function compactValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(compactValue)
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).filter(([, v]) => !isBlank(v)).map(([k, v]) => [k, compactValue(v)]))
+  }
+  return value
+}
