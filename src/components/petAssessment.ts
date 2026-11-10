@@ -24,47 +24,18 @@ export function fieldTargets(pages: PageLayout[]) {
 }
 
 export const interviewTopics = [
-  {
-    title: '日常での様子の変化', icon: 'calendar-event',
-    hints: [
-      { key: 'person.lifeHistory', text: '以前と比べて変わった暮らし方や習慣' },
-      { key: 'dailySchedule', text: '起床から就寝までの過ごし方' },
-      { key: 'health.history', text: '病気やけがのあとに変わった日常の様子' },
-    ],
-  },
-  {
-    title: '困っている場面', icon: 'exclamation-triangle',
-    hints: [
-      { key: 'survey.2_2', text: '家の中を移動するときに手助けが必要な場面' },
-      { key: 'survey.1_7', text: '歩くときにふらつきや不安を感じる場面' },
-      { key: 'survey.2_5', text: '排尿のときに見守りや手助けが必要なこと' },
-      { key: 'housing.toiletStyle', text: '普段使うトイレの形と使いづらさ' },
-    ],
-  },
-  {
-    title: 'ご本人の感じ方', icon: 'person',
-    hints: [{ key: 'complaint.person', text: 'ご本人が困っていることや、これからも続けたいこと' }],
-  },
-  {
-    title: 'ご家族の気づき', icon: 'people',
-    hints: [{ key: 'family.members', text: '普段そばにいるご家族と、ご本人との関わり方' }],
-  },
-  {
-    title: '場面ごとの具体例', icon: 'house',
-    hints: [
-      { key: 'survey.2_4', text: '食事で自分でできることと、手助けが必要なこと' },
-      { key: 'survey.1_10', text: 'お風呂で自分で洗えるところと、手助けが必要なところ' },
-      { key: 'survey.2_2', text: '居室から食卓やトイレへ移動する様子' },
-      { key: 'survey.2_12', text: '普段どのくらい外出しているか' },
-    ],
-  },
+  { title: '日常での様子の変化', icon: 'calendar-event', description: '生活リズム・活動量・できることの変化 など', keys: ['person.lifeHistory', 'dailySchedule', 'health.history'] },
+  { title: '困っている場面', icon: 'exclamation-triangle', description: '生活の中で負担や不安を感じる場面 など', keys: ['survey.2_2', 'survey.1_7', 'survey.2_5', 'housing.toiletStyle'] },
+  { title: 'ご本人の感じ方', icon: 'person', description: '今の気持ち・希望・大切にしたいこと など', keys: ['complaint.person'] },
+  { title: 'ご家族の気づき', icon: 'people', description: 'ご家族から見た変化・気になる点 など', keys: ['family.members'] },
+  { title: '場面ごとの具体例', icon: 'house', description: '食事・入浴・移動・外出などの様子 など', keys: ['survey.2_4', 'survey.1_10', 'survey.2_2', 'survey.2_12'] },
 ]
 
 export function availableTopics(values: Values, targets: ReturnType<typeof fieldTargets>) {
   const missing = missingRequiredKeys(values)
   return interviewTopics.flatMap((topic) => {
-    const hints = topic.hints.filter(({ key }) => missing.has(key) && targets.has(key))
-    return hints.length ? [{ ...topic, hints }] : []
+    const keys = topic.keys.filter((key) => missing.has(key) && targets.has(key))
+    return keys.length ? [{ ...topic, keys }] : []
   })
 }
 
