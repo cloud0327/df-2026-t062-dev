@@ -8,6 +8,7 @@ import { useDocument } from '../form/useDocument.ts'
 import { useRecorder } from '../form/useRecorder.ts'
 import { api } from '../lib/api.ts'
 import { linkProps } from '../lib/router.tsx'
+import { COMING_SOON_LABEL, newDocMenu } from '../lib/docMenu.ts'
 import { countText } from '../components/Chrome.tsx'
 import { SyncDifferences } from '../components/SyncDifferences.tsx'
 
@@ -95,8 +96,8 @@ export function PadWork({ clientId }: { clientId: string }) {
             <button className={menuItem(isAdm)} role="menuitem" type="button" onClick={() => void openDoc('admission')}>入院時情報提供書</button>
             <div style={{ height: 1, background: '#E1E4EA', margin: '6px 8px' }} />
             <div style={{ fontSize: 13, color: '#5A6270', padding: '4px 14px' }}>書類を作る（{client?.name}さんの今の情報から AI が書き込みます）</div>
-            {['モニタリング', 'デイの体験用紙'].map((t) => (
-              <button key={t} className="toc" role="menuitem" type="button" onClick={() => setDocOpen(false)} style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 0 }}>＋ {t}<span style={{ fontSize: 13, color: '#5A6270' }}>様式を登録すると作れます</span></button>
+            {newDocMenu.map((d) => (
+              <button key={d.label} className="toc" role="menuitem" type="button" disabled={!d.available} aria-disabled={!d.available} onClick={() => setDocOpen(false)} style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 0 }}>＋ {d.label}{!d.available && <span className="coming-soon" style={{ fontSize: 13 }}>{COMING_SOON_LABEL}</span>}</button>
             ))}
           </div>
         )}
@@ -132,8 +133,14 @@ export function PadWork({ clientId }: { clientId: string }) {
       {phase === 'done' && job && (
         <div role="status" className="strip" style={{ background: '#FFF4E5', borderBottom: '1px solid #F0C78A' }}>
           <span aria-hidden="true" style={{ flex: '0 0 auto', width: 28, height: 28, borderRadius: '50%', background: '#E8912D', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5 9-10" /></svg></span>
-          <div style={{ flex: '1 1 auto', minWidth: 0, fontSize: 16 }}><strong>録音から、用紙の {job.batch?.changes ?? 0} か所を書きました。</strong><br /><span style={{ fontSize: 15, color: '#5C3A00' }}>橙色が AI の書いたところです。{job.batch?.kept ? `あなたが先に書いた ${job.batch.kept} か所（黄色）は、そのままにしています。` : ''}</span></div>
+          <div style={{ flex: '1 1 auto', minWidth: 0, fontSize: 16 }}><strong>{job.status === 'partial' ? `一部を処理できませんでした。用紙の ${job.batch?.changes ?? 0} か所を書きました。` : `録音から、用紙の ${job.batch?.changes ?? 0} か所を書きました。`}</strong><br /><span style={{ fontSize: 15, color: '#5C3A00' }}>{job.status === 'partial' ? '橙色の箇所を確認してください。' : `橙色が AI の書いたところです。${job.batch?.kept ? `あなたが先に書いた ${job.batch.kept} か所（黄色）は、そのままにしています。` : ''}`}</span></div>
           <button type="button" onClick={() => setDismissed((s) => new Set(s).add(job.id))} style={{ flex: '0 0 auto', font: 'inherit', fontSize: 15, fontWeight: 700, border: 0, background: 'transparent', color: '#874600', cursor: 'pointer', minHeight: 44, padding: '0 6px' }}>OK</button>
+        </div>
+      )}
+      {job?.status === 'failed' && !dismissed.has(job.id) && (
+        <div role="alert" className="strip" style={{ background: '#FDE8E7', color: '#A3261C' }}>
+          <div style={{ flex: '1 1 auto' }}>AI 処理を完了できませんでした。録音は保存されています。担当者に確認してください。</div>
+          <button type="button" onClick={() => setDismissed((s) => new Set(s).add(job.id))}>閉じる</button>
         </div>
       )}
       {recorder.phase === 'error' && (

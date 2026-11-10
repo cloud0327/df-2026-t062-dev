@@ -15,8 +15,12 @@ export function Login() {
     setError('')
     try {
       await auth.signIn(email.trim(), password)
-    } catch {
-      setError('メールアドレスかパスワードが違います')
+    } catch (err: unknown) {
+      const code = err && typeof err === 'object' && 'code' in err ? err.code : undefined
+      const isNetworkError = code === 'auth/network-request-failed' || code === 'auth/timeout'
+      setError(isNetworkError
+        ? 'つながらない。今日は一度止めてまた'
+        : 'メールアドレスかパスワードが違います')
     } finally {
       setBusy(false)
     }

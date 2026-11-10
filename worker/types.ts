@@ -27,7 +27,10 @@ export interface Visit {
 
 export interface Usage {
   calls: number
+  /** 入力（キャッシュに当たった分も含む） */
   promptTokens: number
+  /** 入力のうち、キャッシュに当たった分（単価が安い） */
+  cachedTokens: number
   outputTokens: number
   thinkingTokens: number
   /** 円（見込みの単価で計算） */
@@ -61,6 +64,8 @@ export interface WriterResult {
   usage: Usage
   /** 書けなかった 23 項目の番号など（一部だけ書けたとき） */
   failed: string[]
+  /** AI が処理できなかった fields.json の key */
+  incompleteFields: string[]
 }
 
 export interface SheetWriter {
@@ -77,4 +82,4 @@ export interface Providers {
   writer: SheetWriter
 }
 
-export const ZERO_USAGE: Usage = { calls: 0, promptTokens: 0, outputTokens: 0, thinkingTokens: 0, yen: 0 }
+export const ZERO_USAGE: Usage = { calls: 0, promptTokens: 0, cachedTokens: 0, outputTokens: 0, thinkingTokens: 0, yen: 0 }

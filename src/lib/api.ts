@@ -2,6 +2,10 @@
 import type { ClientSummary, DocumentView, JobView, SlotEdit, SlotEditResult, Staff, SyncDifference } from '../../db/repo.ts'
 import type { FormAssetsView, FormKind, FormVersionView } from '../../core/form.ts'
 
+import type { SurveyImportKey, SurveySource } from '../../core/survey-import.ts'
+import type { ChatMessage, ChatReply } from '../../api/chat.ts'
+import { readChatStream } from './chatStream.ts'
+
 export type { ClientSummary, DocumentView, JobView, SlotEdit, SlotEditResult, Staff, SyncDifference }
 
 export interface ClientDetail {
@@ -34,11 +38,13 @@ async function req<T>(method: string, path: string, body?: unknown, cache: Reque
     body: body !== undefined ? JSON.stringify(body) : undefined,
     cache,
   })
-  if (!res.ok) {
-    const j = await res.json().catch(() => ({}))
-    throw new ApiError(res.status, j.message ?? j.error ?? `HTTP ${res.status}`)
-  }
+  if (!res.ok) await fail(res)
   return res.json() as Promise<T>
+}
+
+async function fail(res: Response): Promise<never> {
+  const j = await res.json().catch(() => ({}))
+  throw new ApiError(res.status, j.message ?? j.error ?? `HTTP ${res.status}`)
 }
 
 /** 様式の版は中身が変わらないので、開いている間は覚えておく（ブラウザも覚える） */
@@ -66,6 +72,21 @@ export const api = {
     req<{ differences: SyncDifference[], document: DocumentView }>('POST', `/api/documents/${id}/sync-decisions`, input),
   patch: (id: string, changes: { key: string, value: unknown, base: unknown, mode?: 'edit' | 'revert' }[]) =>
     req<{ syncedTo: string[], document: DocumentView }>('PATCH', `/api/documents/${id}/fields`, { changes }),
+  /** 書き方の相談。ペットが道具を使うたびに onStep（作業ログの 1 行）を呼び、最後に答えを返す */
+  async chat(id: string, messages: ChatMessage[], onStep: (step: string) => void): Promise<ChatReply> {
+    const token = await tokenSource()
+    const res = await fetch(`/api/documents/${id}/chat`, {
+      method: 'POST',
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages }),
+      cache: 'no-store',
+    })
+    if (!res.ok || !res.body) await fail(res)
+    return readChatStream(res.body!, onStep)
+  },
+  importSurvey: (id: string, body: Pick<SurveySource, 'fileName' | 'sha256' | 'recordedOn'> & {
+    changes: { key: SurveyImportKey, choice: number, base: unknown }[],
+  }) => req<{ document: DocumentView }>('POST', `/api/documents/${id}/survey-import`, body),
   edits: (id: string, formVersionId: string, edits: SlotEdit[]) =>
     req<{ results: SlotEditResult[], syncedTo: string[], document: DocumentView }>('POST', `/api/documents/${id}/edits`, { formVersionId, edits }),
   save: (id: string, body: { scope: 'document' } | { scope: 'page', page: number } | { scope: 'hunk', key: string, hunkIndex: number }) =>

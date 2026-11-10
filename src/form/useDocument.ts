@@ -445,9 +445,9 @@ export function useDocument(docId: string | undefined) {
     return true
   }, [form, loadAssets])
 
-  /** 差分の欄として出す、AI が書いた長い文章の欄か */
+  /** AI が書いた、差分表示に対応する文章欄または単行欄か */
   const diffOf = useCallback((s: SlotView): { key: string, before: string, after: string, ai: string } | null => {
-    if (s.kind !== 'area' || s.binding?.op !== 'text@1' || s.binding.ref.path?.length) return null
+    if ((s.kind !== 'area' && s.kind !== 'text') || s.binding?.op !== 'text@1' || s.binding.ref.path?.length) return null
     const key = s.binding.ref.key
     const f = doc?.fields[key]
     const after = typeof current[key] === 'string' ? (current[key] as string) : ''
@@ -496,6 +496,11 @@ export function useDocument(docId: string | undefined) {
     hasLocalEdits: slotQueue.length + fieldQueue.size + conflicts.size + drafts.size + eraDrafts.size > 0,
     hasPdf: assets?.hasPdf ?? false,
     edit, type, commit, display, reasons, setValue, flush, reload: load, diffOf, imageOf, imageFailed,
+    adoptSurvey: async (body: Parameters<typeof api.importSurvey>[1]) => {
+      if (!docId || active.current !== docId) throw new Error('用紙が切り替わりました。')
+      const result = await api.importSurvey(docId, body)
+      publish(result.document)
+    },
     savePage: (no: number) => doSave({ scope: 'page', page: no }),
     saveDocument: () => doSave({ scope: 'document' }),
     saveHunk: (key: string, hunkIndex: number) => doSave({ scope: 'hunk', key, hunkIndex }),

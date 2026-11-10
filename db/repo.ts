@@ -4,6 +4,7 @@ import { saveOneHunk } from '../core/diff.ts'
 import { syncStatus, type SyncStatus } from '../core/document-sync.ts'
 import { isShared, spec } from '../core/fields.ts'
 import { slotPages, type FormKind } from '../core/form.ts'
+import type { SurveySource } from '../core/survey-import.ts'
 import { countRequired } from '../core/required.ts'
 import { applyChanges, editSlot, slotKeys, type Values, type Who } from '../core/slots.ts'
 import { loadFormDef, publishedVersionId } from './forms.ts'
@@ -13,7 +14,7 @@ type Q = Db | Tx
 
 export interface Staff { id: string, officeId: string, name: string, email: string | null, role: string, officeName: string }
 
-export interface FieldRow { value: unknown, aiValue: unknown, by: Who, batchId: string | null, updatedAt: string }
+export interface FieldRow { value: unknown, aiValue: unknown, by: Who, batchId: string | null, updatedAt: string, surveySource?: SurveySource }
 export interface SavedRow { value: unknown, by: Who }
 
 export interface DocumentView {
@@ -172,13 +173,14 @@ async function lockDocument(c: Tx, officeId: string, documentId: string) {
 
 async function readFields(db: Q, documentId: string, clientId: string): Promise<Record<string, FieldRow>> {
   const r = await db.query(
-    `SELECT key, value, ai_value, by, batch_id, updated_at FROM field_values
+    `SELECT key, value, ai_value, by, batch_id, updated_at, cite FROM field_values
      WHERE client_id = $2 AND (document_id = $1 OR document_id IS NULL)`,
     [documentId, clientId],
   )
   const out: Record<string, FieldRow> = {}
   for (const row of r.rows) {
-    out[row.key] = { value: row.value, aiValue: row.ai_value, by: row.by, batchId: row.batch_id, updatedAt: new Date(row.updated_at).toISOString() }
+    out[row.key] = { value: row.value, aiValue: row.ai_value, by: row.by, batchId: row.batch_id, updatedAt: new Date(row.updated_at).toISOString(),
+      ...(row.cite?.kind === 'survey-import' ? { surveySource: row.cite as SurveySource } : {}) }
   }
   return out
 }
@@ -207,6 +209,22 @@ export async function getDocument(db: Q, officeId: string, documentId: string): 
     rev: Number(rev.rows[0].rev),
     batches: batches.rows.map((b) => ({ id: b.id, kind: b.kind, label: b.label, createdAt: new Date(b.created_at).toISOString(), changes: Number(b.n), kept: Number(b.k) })),
   }
+}
+
+/** 利用者の録音の文字起こし（古い順）。チャットの根拠に使う */
+export async function clientTranscripts(db: Q, officeId: string, clientId: string): Promise<{ recordedAt: string, utterances: { id: string, speaker: string, person?: string | null, text: string }[] }[]> {
+  const r = await db.query(
+    `SELECT r.recorded_at, t.utterances FROM transcripts t JOIN recordings r ON r.id = t.recording_id
+     WHERE t.office_id = $1 AND t.client_id = $2 ORDER BY r.recorded_at`,
+    [officeId, clientId],
+  )
+  return r.rows.map((x) => ({ recordedAt: new Date(x.recorded_at).toISOString(), utterances: x.utterances }))
+}
+
+/** 同じ利用者のほかの書類（書き方の相談で AI が読む）。同じ事業所の、同じ利用者のものだけ */
+export async function otherDocuments(db: Q, officeId: string, clientId: string, exceptId: string): Promise<DocumentView[]> {
+  const r = await db.query('SELECT id FROM documents WHERE office_id = $1 AND client_id = $2 AND id <> $3 ORDER BY created_at', [officeId, clientId, exceptId])
+  return Promise.all(r.rows.map((x) => getDocument(db, officeId, x.id as string)))
 }
 
 /** 入院時情報提供書と、その元になったアセスメントの差異。 */
@@ -300,7 +318,10 @@ async function writeField(c: Tx, officeId: string, clientId: string, documentId:
        ai_value = coalesce(EXCLUDED.ai_value, field_values.ai_value),
        by = EXCLUDED.by,
        batch_id = coalesce(EXCLUDED.batch_id, field_values.batch_id),
-       cite = coalesce(EXCLUDED.cite, field_values.cite),
+       cite = CASE
+         WHEN field_values.cite->>'kind' = 'survey-import' THEN EXCLUDED.cite
+         ELSE coalesce(EXCLUDED.cite, field_values.cite)
+       END,
        updated_by = EXCLUDED.updated_by,
        updated_at = now()`,
     [officeId, clientId, docId, key, JSON.stringify(value), extra.aiValue === undefined ? null : JSON.stringify(extra.aiValue), by, extra.batchId ?? null, extra.cite === undefined ? null : JSON.stringify(extra.cite), staffId],
@@ -328,6 +349,7 @@ export interface FieldChange {
   /** 画面がこの直しの元にした値（null は空）。サーバーの今の値と違えば Conflict（409） */
   base: unknown
   mode?: 'edit' | 'revert'
+  surveySource?: SurveySource
 }
 
 /**
@@ -342,14 +364,16 @@ export async function patchFields(db: Db, staff: Staff, documentId: string, chan
     const saved = await readSaved(c, d.id)
     const fields = await readFields(c, d.id, d.clientId)
     for (const ch of changes) {
+      if (ch.surveySource && d.kind !== 'assessment') throw new BadRequest('認定調査票はアセスメントに取り込めます')
       if (!allowed.has(ch.key)) throw new BadRequest(`この書類にない欄です: ${ch.key}`)
       if (!sameValue(fields[ch.key]?.value ?? null, ch.base ?? null)) throw new Conflict(ch.key)
+      if (ch.surveySource && sameValue(ch.base, null) && !sameValue(saved[ch.key]?.value, null)) throw new Conflict(ch.key)
     }
     for (const ch of changes) {
       const back = ch.mode === 'revert' && saved[ch.key] && sameValue(saved[ch.key].value, ch.value)
       const cur = fields[ch.key]
       const by: Who = back ? saved[ch.key].by : ch.mode === 'revert' && cur ? cur.by : 'cm'
-      await writeField(c, staff.officeId, d.clientId, d.id, ch.key, ch.value, by, staff.id)
+      await writeField(c, staff.officeId, d.clientId, d.id, ch.key, ch.value, by, staff.id, { cite: ch.surveySource })
     }
     const values = applyChanges(plainValues(fields), changes.map((ch) => ({ key: ch.key, value: ch.value })))
     return { syncedTo: await afterEdit(c, staff, d, changes.map((ch) => ch.key), values) }
@@ -470,6 +494,8 @@ export interface ApplyInput {
   kind: 'recording' | 'copy' | 'seed'
   label: string
   jobId?: string
+  /** Worker の今回の実行。ジョブ完了と用紙への反映を同じ transaction で確定する */
+  completion?: { token: string, status: 'succeeded' | 'partial', steps: Record<string, unknown> }
   proposed: Record<string, { value: unknown, cite?: string[] }>
   /** プログラムが決める欄の値（1 回目の録音の日をアセスメント実施日にする、など） */
   system?: Record<string, unknown>
@@ -481,6 +507,17 @@ export interface ApplyInput {
  */
 export async function applyBatch(db: Db, input: ApplyInput, run: <T>(fn: (c: Tx) => Promise<T>) => Promise<T> = (fn) => tx(db, fn)): Promise<{ batchId: string | null, plan: BatchPlan }> {
   return run(async (c) => {
+    if (input.completion && !input.jobId) throw new BadRequest('jobId が必要です')
+    if (input.completion) {
+      const j = (await c.query('SELECT status, run_token, lease_until > now() AS lease_active FROM jobs WHERE id = $1 FOR UPDATE', [input.jobId])).rows[0]
+      if (!j || j.status !== 'processing' || j.run_token !== input.completion.token || !j.lease_active) throw new Conflict('job_lease')
+      const old = (await c.query("SELECT id, changes, kept FROM batches WHERE job_id = $1 AND kind = 'recording'", [input.jobId])).rows[0]
+      if (old) {
+        const plan: BatchPlan = { changes: old.changes, kept: old.kept, skipped: [] }
+        await finishJob(c, input, old.id, plan)
+        return { batchId: old.id as string, plan }
+      }
+    }
     const d = await lockDocument(c, input.officeId, input.documentId)
     const allowed = await allowedKeys(c, d.versionId)
     const fields = await readFields(c, d.id, d.clientId)
@@ -488,7 +525,10 @@ export async function applyBatch(db: Db, input: ApplyInput, run: <T>(fn: (c: Tx)
     const system = Object.fromEntries(Object.entries(input.system ?? {}).filter(([k]) => allowed.has(k)).map(([k, v]) => [k, { value: v }]))
     const proposed = { ...Object.fromEntries(Object.entries(input.proposed).filter(([k]) => allowed.has(k))), ...system }
     const plan = planBatch(current, proposed, new Set(Object.keys(system)))
-    if (!plan.changes.length && !plan.kept.length) return { batchId: null, plan }
+    if (!plan.changes.length && !plan.kept.length) {
+      if (input.completion) await finishJob(c, input, null, plan)
+      return { batchId: null, plan }
+    }
     const batch = (await c.query(
       'INSERT INTO batches (office_id, client_id, document_id, kind, label, job_id, changes, kept) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id',
       [input.officeId, d.clientId, d.id, input.kind, input.label, input.jobId ?? null, JSON.stringify(plan.changes), JSON.stringify(plan.kept)],
@@ -498,8 +538,17 @@ export async function applyBatch(db: Db, input: ApplyInput, run: <T>(fn: (c: Tx)
     }
     await c.query('UPDATE clients SET updated_at = now() WHERE id = $1', [d.clientId])
     await c.query('UPDATE documents SET updated_at = now() WHERE id = $1', [d.id])
+    if (input.completion) await finishJob(c, input, batch.id, plan)
     return { batchId: batch.id as string, plan }
   })
+}
+
+async function finishJob(c: Tx, input: ApplyInput, batchId: string | null, plan: BatchPlan) {
+  const result = await c.query(
+    "UPDATE jobs SET status = $3, step = 'done', batch_id = $4, steps = steps || $5::jsonb, lease_until = NULL, run_token = NULL, error_kind = NULL, updated_at = now() WHERE id = $1 AND run_token = $2 RETURNING id",
+    [input.jobId, input.completion!.token, input.completion!.status, batchId, JSON.stringify({ ...input.completion!.steps, apply: { changes: plan.changes.length, kept: plan.kept.length } })],
+  )
+  if (!result.rows.length) throw new Conflict('job_lease')
 }
 
 /** 入院時情報提供書を作る。アセスメントに値がある欄を写す（写したあとは別の値。基本情報だけはつながったまま） */
@@ -613,16 +662,20 @@ export interface JobView {
   createdAt: string
   updatedAt: string
   batch: { changes: number, kept: number } | null
+  incompleteFields: string[]
+  errorKind: string | null
 }
 
-/** 処理中のジョブと、終わって 15 分以内のジョブ */
+/** 処理中・直近 15 分のジョブと、最後のジョブ（後日も失敗が分かるようにする） */
 export async function activeJobs(db: Q, officeId: string, clientId: string): Promise<JobView[]> {
   const r = await db.query(
-    `SELECT j.id, j.status, j.step, j.eta_seconds, j.created_at, j.updated_at,
+    `SELECT j.id, j.status, j.step, j.eta_seconds, j.created_at, j.updated_at, j.error_kind,
+            j.steps #> '{write,incompleteFields}' AS incomplete_fields,
             jsonb_array_length(b.changes) AS n, jsonb_array_length(b.kept) AS k
      FROM jobs j LEFT JOIN batches b ON b.id = j.batch_id
      WHERE j.office_id = $1 AND j.client_id = $2
-       AND (j.status IN ('queued', 'processing') OR j.updated_at > now() - interval '15 minutes')
+       AND (j.status IN ('queued', 'processing') OR j.updated_at > now() - interval '15 minutes'
+            OR j.id = (SELECT last.id FROM jobs last WHERE last.office_id = $1 AND last.client_id = $2 ORDER BY last.created_at DESC LIMIT 1))
      ORDER BY j.created_at DESC LIMIT 5`,
     [officeId, clientId],
   )
@@ -634,5 +687,13 @@ export async function activeJobs(db: Q, officeId: string, clientId: string): Pro
     createdAt: new Date(j.created_at).toISOString(),
     updatedAt: new Date(j.updated_at).toISOString(),
     batch: j.n === null ? null : { changes: Number(j.n), kept: Number(j.k) },
+    incompleteFields: stringValues(j.incomplete_fields),
+    errorKind: j.error_kind ?? null,
   }))
+}
+
+function stringValues(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  const strings: string[] = value.filter((item): item is string => typeof item === 'string')
+  return [...new Set(strings)]
 }
