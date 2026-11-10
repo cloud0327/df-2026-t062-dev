@@ -25,6 +25,7 @@ let failNextEnqueue = false
 const enqueues = new Map<string, number>()
 /** チャットのエージェントに返した道具の答え（search_records） */
 const searchResults: Record<string, unknown>[] = []
+const crossReads: Record<string, unknown>[] = []
 
 const call = async (path: string, init: RequestInit & { token?: string } = {}) => {
   const res = await fetch(`${origin}${path}`, {
@@ -91,6 +92,12 @@ before(async () => {
     // 台本: 録音を探してから、用紙を読んで案を出す
     chat: async () => async ({ contents }) => {
       const res = contents.at(-1)!.parts.find((p) => p.functionResponse)?.functionResponse
+      // 台本 2: 「流用」なら、ほかの書類（アセスメント）を読むだけ
+      if (/流用/.test(contents[0].parts[0].text ?? '')) {
+        if (!res) return [{ functionCall: { name: 'read_form', args: { document: 'assessment' } } }]
+        crossReads.push(res.response)
+        return [{ text: '読みました。' }]
+      }
       if (!res) return [{ functionCall: { name: 'search_records', args: { query: 'リハビリ' } } }]
       if (res.name === 'search_records') {
         searchResults.push(res.response)
@@ -433,4 +440,17 @@ test('書き方の相談: エージェントが録音を探し、用紙を読ん
   assert.equal((await ask([{ role: 'user', text: 'a' }], OTHER)).status, 404)
   assert.equal((await ask([])).status, 400)
   assert.equal((await ask([{ role: 'pet', text: '最後がペット' }])).status, 400)
+})
+
+test('書き方の相談: 入院時情報提供書から、同じ利用者のアセスメントを読める', { skip }, async () => {
+  // 甲斐さんには、上のテストで作った入院時情報提供書がある
+  const adm = await docOf(ids.kai, 'admission')
+  const assessment = ((await call(`/api/documents/${(await docOf(ids.kai)).id}`)).body as Doc).document
+  const res = await fetch(`${origin}/api/documents/${adm.id}/chat`, { method: 'POST', headers: { Authorization: TOKEN, 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: [{ role: 'user', text: 'アセスメントから流用して' }] }) })
+  const events = (await res.text()).trim().split('\n').map((l) => JSON.parse(l))
+  assert.deepEqual(events.map((e) => e.steps ?? e.text), ['用紙を読みました（アセスメント）', ['用紙を読みました（アセスメント）']])
+  const read = crossReads.at(-1) as { document: string, filled: { key: string, value: string }[] }
+  assert.equal(read.document, 'アセスメント')
+  const lifeHistory = read.filled.find((f) => f.key === 'person.lifeHistory')
+  assert.equal(lifeHistory?.value, assessment.fields['person.lifeHistory'].value, 'アセスメントの値を読む')
 })

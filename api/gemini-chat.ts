@@ -27,8 +27,12 @@ export function geminiChatModel(env: NodeJS.ProcessEnv, opts: { retries?: number
         const u = r.usageMetadata
         const prompt = u?.promptTokenCount ?? 0
         const output = (u?.candidatesTokenCount ?? 0) + (u?.thoughtsTokenCount ?? 0)
-        console.log(JSON.stringify({ severity: 'INFO', msg: 'chat gemini', ok: true, attempt, seconds: (Date.now() - t0) / 1000, promptTokens: prompt, outputTokens: output, yen: (prompt * yenIn + output * yenOut) / 1e6 }))
-        return (r.candidates?.[0]?.content?.parts ?? []) as Part[]
+        const c = r.candidates?.[0]
+        const parts = (c?.content?.parts ?? []) as Part[]
+        // 部品の種類だけを出す（文・道具の名前・考え）。中身は出さない
+        const kinds = parts.map((p) => (p.functionCall ? `call:${p.functionCall.name}` : p.thought ? 'thought' : p.text ? 'text' : 'other'))
+        console.log(JSON.stringify({ severity: 'INFO', msg: 'chat gemini', ok: true, attempt, final: !!final, finishReason: c?.finishReason ?? null, parts: kinds, seconds: (Date.now() - t0) / 1000, promptTokens: prompt, outputTokens: output, yen: (prompt * yenIn + output * yenOut) / 1e6 }))
+        return parts
       } catch (e) {
         console.log(JSON.stringify({ severity: 'WARNING', msg: 'chat gemini', ok: false, attempt, seconds: (Date.now() - t0) / 1000, error: (e as Error)?.name ?? 'Error', status: (e as { status?: number })?.status ?? null }))
         if (attempt >= retries) throw e

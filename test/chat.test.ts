@@ -109,13 +109,16 @@ test('propose_edit: 通る案だけを集め、通らない案は理由を AI �
 
 test(`道具を呼び続けたら、${MAX_CALLS} 回目は道具なしで答えさせる。答えなくても、出した案があれば案を出したと返す`, async () => {
   const finals: boolean[] = []
-  const model: ChatModel = async ({ final }) => {
+  let lastParts: Part[] = []
+  const model: ChatModel = async ({ final, contents }) => {
     finals.push(!!final)
+    lastParts = contents.at(-1)!.parts
     return finals.length === 1 ? [call('propose_edit', { key: 'person.lifeHistory', value: '農業を営んできた。' })] : [call('read_form')]
   }
   const r = await runChat({ model, document: doc, recordings, messages: [{ role: 'user', text: '生活歴を書いて' }] })
   assert.equal(finals.length, MAX_CALLS)
   assert.deepEqual(finals.map((f, i) => [i, f]).filter(([, f]) => f), [[MAX_CALLS - 1, true]], '最後の 1 回だけ道具なし')
+  assert.ok(lastParts.some((p) => /道具はもう使えません/.test(p.text ?? '')), '最後の 1 回は、答えるように文でも頼む')
   assert.equal(r.proposals.length, 1)
   assert.doesNotMatch(r.reply, /止まりました/, 'うまくいった案があるのに「止まりました」と言わない')
   assert.match(r.reply, /用紙に入れる/)
@@ -143,6 +146,54 @@ test('read_form: 用紙に印字するときだけ付く印（家族の主たる
   assert.match(family.printed, /isMainCaregiver/)
   assert.match(family.printed, /※/)
   assert.match(chatSystem('assessment'), /printed/)
+})
+
+test('read_form: document で、同じ利用者のほかの書類（アセスメント）も読める。案は開いている書類の欄だけ', async () => {
+  const admission: ChatDocument = { kind: 'admission', fields: { 'person.interests': { value: null, by: 'ai' } } }
+  const { model, seen } = scripted([
+    [call('read_form', { document: 'assessment', query: '相談' })],
+    [call('read_form', { document: 'monitoring' }), call('read_form', { document: 'admission', query: '趣味' })],
+    [call('propose_edit', { key: 'person.interests', value: '畑仕事（本人）。' }), call('propose_edit', { key: 'complaint.person', value: '家に帰りたい（本人）。' })],
+    [{ text: '流用の案を出しました。' }],
+  ])
+  const r = await runChat({ model, document: admission, others: [doc], recordings, messages: [{ role: 'user', text: 'アセスメントから流用して' }] })
+  const other = responseOf(seen, 1, 'read_form')
+  assert.equal(other.document, 'アセスメント')
+  assert.ok(other.filled.some((f: any) => f.key === 'complaint.person' && f.value === '家に帰りたい。'))
+  assert.equal(other.emptyText, undefined, 'ほかの書類の空欄は返さない（案を出せないので）')
+  const [missing, self] = seen[2].contents.at(-1)!.parts.map((p) => p.functionResponse!.response as Record<string, any>)
+  assert.match(String(missing.error), /ありません/)
+  assert.deepEqual(missing.documents, ['admission', 'assessment'])
+  assert.equal(self.document, '入院時情報提供書')
+  assert.ok(self.emptyText.some((f: any) => f.key === 'person.interests'))
+  assert.deepEqual(r.proposals.map((p) => p.key), ['person.interests'])
+  assert.deepEqual(r.steps, [
+    '用紙を読みました（アセスメント「相談」）',
+    '用紙を読めませんでした：monitoring',
+    '用紙を読みました（「趣味」）',
+    '書き換えの案を作りました：趣味・興味・関心',
+    '案を作れませんでした：相談内容（本人）（この書類にない欄です）',
+  ])
+  // 指示文に、読めるほかの書類を書く
+  assert.match(seen[0].system, /ほかの書類[^\n]*アセスメント（document: "assessment"）/)
+  assert.doesNotMatch(chatSystem('admission', []), /ほかの書類:/)
+})
+
+test('read_form: 開いている書類の空の欄は、形（中の項目・選択肢）つきで返す。長すぎる書類（アセスメント）は省き、語で絞らせる', async () => {
+  const admission: ChatDocument = { kind: 'admission', fields: {} }
+  const { model, seen } = scripted([[call('read_form')], [{ text: '読みました' }]])
+  await runChat({ model, document: admission, recordings, messages: [{ role: 'user', text: '埋めて' }] })
+  const adm = responseOf(seen, 1, 'read_form')
+  const household = adm.empty.find((f: any) => f.key === 'outlook.household')
+  assert.equal(household.shape.type, 'object')
+  assert.ok(household.shape.fields.length > 0, '1 回読めば、まとまりの欄の案を組み立てられる')
+  assert.equal(adm.hint, undefined)
+
+  const big = scripted([[call('read_form')], [{ text: '読みました' }]])
+  await runChat({ model: big.model, document: doc, recordings, messages: [{ role: 'user', text: '埋めて' }] })
+  const assess = responseOf(big.seen, 1, 'read_form')
+  assert.equal(assess.empty, undefined, 'アセスメントは前と同じ大きさ（空のまとまりの欄は返さない）')
+  assert.match(assess.hint, /query/)
 })
 
 test('書き換えの案の確かめ: 文章の欄は文、選択肢の欄は選択肢の文字、まとまりの欄は今の値と同じ形の JSON', () => {

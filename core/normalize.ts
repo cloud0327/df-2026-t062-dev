@@ -44,16 +44,3 @@ export function compactValue(value: unknown): unknown {
   }
   return value
 }
-
-function canonical(v: unknown): unknown {
-  if (Array.isArray(v)) return v.map(canonical)
-  if (v && typeof v === 'object') return Object.fromEntries(Object.keys(v).sort().map((k) => [k, canonical((v as Record<string, unknown>)[k])]))
-  return v
-}
-
-/** 同じ値か。項目の並び（DB の jsonb は並べ替える）と、空の項目の有無は見ない。空と null も同じ */
-export function sameValue(a: unknown, b: unknown): boolean {
-  const x = isBlank(a) ? null : compactValue(a)
-  const y = isBlank(b) ? null : compactValue(b)
-  return JSON.stringify(canonical(x)) === JSON.stringify(canonical(y))
-}

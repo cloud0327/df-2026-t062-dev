@@ -5,7 +5,8 @@
 import type { Binding } from '../core/binding.ts'
 import { BY_KEY, choicesOf, FIELD_LIST, subFieldsOf, type FieldSpec } from '../core/fields.ts'
 import type { FormKind } from '../core/form.ts'
-import { compactValue, sameValue } from '../core/normalize.ts'
+import { sameValue } from '../core/apply-batch.ts'
+import { compactValue } from '../core/normalize.ts'
 import { missingRequiredKeys } from '../core/required.ts'
 import { validValue } from '../core/schema.ts'
 import { PLACEMENT_RULES } from '../worker/vertex/prompts.ts'
@@ -39,10 +40,13 @@ export type ChatModel = (req: { system: string, contents: Content[], tools: Tool
 export const MAX_CALLS = 8
 
 const FORM_KEY: Record<FormKind, string> = { assessment: 'assess', admission: 'adm' }
+const FORM_NAME: Record<FormKind, string> = { assessment: 'アセスメント', admission: '入院時情報提供書' }
 const TEXT_TYPES = new Set(['text', 'longtext'])
 /** 値を文字のまま受ける欄。ほかの欄（まとまり・数・はい／いいえ・複数選ぶ）は JSON で受ける */
 const PLAIN_TYPES = new Set(['text', 'longtext', 'enum', 'date'])
 const MAX_HITS = 40
+/** 空の欄の形を返す長さの上限（字）。入院時情報提供書は収まり、アセスメントは収まらないので語で絞らせる */
+const SHAPE_BUDGET = 8000
 
 const formFields = (kind: FormKind) => FIELD_LIST.filter((f) => f.forms?.[FORM_KEY[kind]])
 const isEmpty = (v: unknown) => v === null || v === undefined || v === '' || (Array.isArray(v) && v.length === 0)
@@ -52,8 +56,14 @@ const matches = (text: string, ts: string[]) => ts.some((t) => text.includes(t))
 export const TOOLS: ToolDecl[] = [
   {
     name: 'read_form',
-    description: '開いている書類の用紙を読む。値のある欄（key・名前・型・値）と、まだ空の文章の欄を返す。printed は用紙に印字するときの決まり（値に入っていない印など）。query に語を入れると、欄の名前か key にその語を含む欄だけにし、まとまりの欄の形（shape: 中の項目と選択肢）と、空のまとまりの欄（empty）も返す（空白で区切るとどれか）',
-    parametersJsonSchema: { type: 'object', properties: { query: { type: 'string', description: '欄の名前の一部（例: 入浴、相談内容）。全部読むときは空' } } },
+    description: '書類の用紙を読む（document を省くと開いている書類。同じ利用者のほかの書類は document にその種類を入れる。ほかの書類は値のある欄だけ）。値のある欄（key・名前・型・値）と、まだ空の文章の欄を返す。printed は用紙に印字するときの決まり（値に入っていない印など）。query に語を入れると、欄の名前か key にその語を含む欄だけにし、まとまりの欄の形（shape: 中の項目と選択肢）と、空のまとまりの欄（empty）も返す（空白で区切るとどれか）',
+    parametersJsonSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: '欄の名前の一部（例: 入浴、相談内容）。全部読むときは空' },
+        document: { type: 'string', description: '読む書類の種類（assessment: アセスメント、admission: 入院時情報提供書）。省くと開いている書類' },
+      },
+    },
   },
   {
     name: 'missing_fields',
@@ -72,17 +82,22 @@ export const TOOLS: ToolDecl[] = [
   },
 ]
 
-export function chatSystem(kind: FormKind): string {
-  const form = kind === 'admission' ? '入院時情報提供書' : 'アセスメント'
+export function chatSystem(kind: FormKind, others: FormKind[] = []): string {
+  const form = FORM_NAME[kind]
+  const otherDocs = others.length
+    ? `\nこの利用者のほかの書類: ${others.map((k) => `${FORM_NAME[k]}（document: "${k}"）`).join('、')}。read_form の document で読める。\n`
+    : ''
   return `あなたは、ケアマネジャーが${form}の用紙を書くのを手伝う係（画面の「ペット」）です。道具を使って調べてから、短く、やさしい言葉で答えてください。
-
+${otherDocs}
 ## 道具の使い方
 1. 利用者のことや用紙の中身を聞かれたら、read_form（用紙）や search_records（録音）で確かめてから答える。道具で見つからないことは「用紙にも録音にも出ていません」と答え、推測で埋めない。
 2. 欄を書いて・直して・短くしてなどと頼まれたら、read_form（欄の名前の語で絞る）でその欄の今の値と形を読み、必要なら search_records で根拠を探してから、propose_edit で案を出す。文章の欄だけでなく、相談者・家族の表などのまとまりの欄や選択肢の欄にも案を出せる。value はその欄の新しい値の全体（まとまりの欄は今の値をもとにした JSON）。頼まれていないのに案を出さない。
 3. 用紙に見えている文字が値にないときは、read_form の printed（印字するときだけ付く印などの様式の決まり）を確かめる。印の意味を説明し、それでも消したいと言われたら、印のもとになる項目を変える案を出す。
 4. 足りないところ・埋まっていない欄を聞かれたら、missing_fields を使う。埋め方（面談で聞く／書類から）ごとにまとめて答える。
-5. 録音がない（recordings: 0）と分かったら、もう search_records を使わない。同じ道具を同じ語で何度も呼ばない。案を出したら、それ以上調べずに答えを書く。
-6. あなたは用紙に直接は書けない。出した案は、ケアマネが画面の「用紙に入れる」を押したときに入る。保存・PDF・外に送ることもできないので、頼まれたら画面のボタンで行うよう伝える。
+5. 読むときは、要る呼び出しを 1 回の答えにまとめて並べる（read_form を語ごとに何回にも分けない）。呼べる回数には限りがある。
+6. ほかの書類から流用して・写してと頼まれたら、read_form（document なし）でこの書類の空の欄を確かめ、read_form（document にほかの書類）で中身を読んでから、この書類の空の欄に合うものを propose_edit で出す（案は何件でもよい。同じ道具の呼び出しは 1 回の答えにまとめて並べてよい）。同じ key の欄はそのまま写し、違う欄はほかの書類の中身からこの欄に合うように要約する。ほかの書類に書いていないことは書かない。案を出せるのは、開いている書類の欄だけ。
+7. 録音がない（recordings: 0）と分かったら、もう search_records を使わない。同じ道具を同じ語で何度も呼ばない。案を出したら、それ以上調べずに答えを書く。
+8. あなたは用紙に直接は書けない。出した案は、ケアマネが画面の「用紙に入れる」を押したときに入る。保存・PDF・外に送ることもできないので、頼まれたら画面のボタンで行うよう伝える。
 
 ## 書き方
 - 文章は、要点を短い文にして「。」でつなぐ。本人・家族の思いや専門職の見立てなど、誰の話かで意味が変わるものは、誰の話か分かるように書く（例:「左側に残渣あり（ST）」）。
@@ -127,12 +142,12 @@ function printedNotes(kind: FormKind): Map<string, string> {
 }
 const PRINTED: Record<FormKind, Map<string, string>> = { assessment: printedNotes('assessment'), admission: printedNotes('admission') }
 
-function readForm(doc: ChatDocument, query: unknown) {
+function readForm(doc: ChatDocument, query: unknown, other = false) {
   const ts = terms(query)
   const pick = (f: FieldSpec) => !ts.length || matches(`${f.label} ${f.key}`, ts)
   const filled: { key: string, label: string, type: string, value: string, shape?: Shape, printed?: string }[] = []
   const emptyText: { key: string, label: string, note?: string }[] = []
-  const empty: { key: string, label: string, shape: Shape }[] = []
+  const empty: { key: string, label: string, type: string, shape?: Shape }[] = []
   for (const f of formFields(doc.kind)) {
     if (!pick(f)) continue
     const v = doc.fields[f.key]?.value
@@ -141,9 +156,14 @@ function readForm(doc: ChatDocument, query: unknown) {
     const shape = ts.length && !TEXT_TYPES.has(f.type) ? shapeOf(f) : undefined
     if (!isEmpty(v)) filled.push({ key: f.key, label: f.label, type: f.type, value: show(v), ...(shape ? { shape } : {}), ...(printed ? { printed } : {}) })
     else if (TEXT_TYPES.has(f.type)) emptyText.push({ key: f.key, label: f.label, ...(f.note ? { note: f.note } : {}) })
-    else if (shape && f.type !== 'image') empty.push({ key: f.key, label: f.label, shape })
+    else if (f.type !== 'image') empty.push({ key: f.key, label: f.label, type: f.type, shape: shapeOf(f) })
   }
-  return ts.length ? { filled, emptyText, empty } : { filled, emptyText }
+  // ほかの書類には案を出せないので、空の欄は返さない
+  if (other) return { document: FORM_NAME[doc.kind], filled }
+  // 空のまとまりの欄も、形つきで返す（1 回読めば案を組み立てられる）。長すぎるときは省き、語で絞らせる
+  if (ts.length || JSON.stringify(empty).length <= SHAPE_BUDGET) return { document: FORM_NAME[doc.kind], filled, emptyText, empty }
+  // 一覧だけでも長い（アセスメントで約 1 万字。会話のたびに送り直す）ので、空のまとまりの欄は返さない
+  return { document: FORM_NAME[doc.kind], filled, emptyText, hint: '欄が多いので、空のまとまりの欄（選ぶ欄・表など）は省いた。query で欄の名前を絞って読むと、形つきで返す' }
 }
 
 function missingFields(doc: ChatDocument) {
@@ -196,15 +216,19 @@ export function checkProposal(doc: ChatDocument, key: unknown, value: unknown): 
 }
 
 const STOPPED = 'ごめんなさい、調べている途中で止まりました。聞きたいことを短くして、もう一度相談してください。'
+const FINAL_ASK = '（道具はもう使えません。ここまでに分かったことと、出した案を、ケアマネに短く答えてください）'
 const PROPOSED = '書き換えの案を出しました。下のカードを見て、よければ「用紙に入れる」を押してください。'
 const FALLBACK = 'うまく答えられませんでした。言い方を変えて、もう一度聞いてください。'
 
-export async function runChat({ model, document, recordings, messages, onStep }: {
+export async function runChat({ model, document, others = [], recordings, messages, onStep }: {
   model: ChatModel, document: ChatDocument, recordings: ChatRecording[], messages: ChatMessage[]
+  /** 同じ利用者のほかの書類（read_form の document で読む。案は出せない） */
+  others?: ChatDocument[]
   /** 道具を使うたびに、作業ログの 1 行を知らせる（画面に少しずつ出す） */
   onStep?: (step: string) => void
 }): Promise<ChatReply> {
-  const system = chatSystem(document.kind)
+  const byKind = new Map(others.filter((d) => d.kind !== document.kind).map((d) => [d.kind, d]))
+  const system = chatSystem(document.kind, [...byKind.keys()])
   const contents: Content[] = messages.map((m) => ({ role: m.role === 'user' ? 'user' : 'model', parts: [{ text: m.text }] }))
   const steps: string[] = []
   const step = (t: string) => { steps.push(t); onStep?.(t) }
@@ -213,6 +237,8 @@ export async function runChat({ model, document, recordings, messages, onStep }:
 
   for (let n = 0; n < MAX_CALLS; n++) {
     const final = n === MAX_CALLS - 1
+    // 最後の 1 回は、道具を止めるだけでなく、答えるように文でも頼む
+    if (final && n > 0) contents.at(-1)!.parts.push({ text: FINAL_ASK })
     const parts = await model({ system, contents, tools: TOOLS, final })
     // 最後の 1 回に道具を呼んできても、もう使わない
     const calls = final ? [] : parts.filter((p) => p.functionCall?.name)
@@ -226,8 +252,17 @@ export async function runChat({ model, document, recordings, messages, onStep }:
       const { id, name, args = {} } = p.functionCall!
       let response: Record<string, unknown>
       if (name === 'read_form') {
-        response = readForm(document, args.query)
-        step(terms(args.query).length ? `用紙を読みました（「${String(args.query).trim()}」）` : '用紙を読みました')
+        const kind = typeof args.document === 'string' && args.document ? args.document : document.kind
+        const target = kind === document.kind ? document : byKind.get(kind as FormKind)
+        const q = terms(args.query).length ? `「${String(args.query).trim()}」` : ''
+        if (!target) {
+          response = { error: `${kind} という書類は、この利用者にありません`, documents: [document.kind, ...byKind.keys()] }
+          step(`用紙を読めませんでした：${kind}`)
+        } else {
+          response = readForm(target, args.query, target !== document)
+          const head = target === document ? '' : FORM_NAME[target.kind]
+          step(head || q ? `用紙を読みました（${head}${q}）` : '用紙を読みました')
+        }
       } else if (name === 'missing_fields') {
         response = missingFields(document)
         step(`足りない欄を調べました（${(response.missing as unknown[]).length} 欄）`)
