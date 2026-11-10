@@ -109,13 +109,16 @@ test('propose_edit: 通る案だけを集め、通らない案は理由を AI �
 
 test(`道具を呼び続けたら、${MAX_CALLS} 回目は道具なしで答えさせる。答えなくても、出した案があれば案を出したと返す`, async () => {
   const finals: boolean[] = []
-  const model: ChatModel = async ({ final }) => {
+  let lastParts: Part[] = []
+  const model: ChatModel = async ({ final, contents }) => {
     finals.push(!!final)
+    lastParts = contents.at(-1)!.parts
     return finals.length === 1 ? [call('propose_edit', { key: 'person.lifeHistory', value: '農業を営んできた。' })] : [call('read_form')]
   }
   const r = await runChat({ model, document: doc, recordings, messages: [{ role: 'user', text: '生活歴を書いて' }] })
   assert.equal(finals.length, MAX_CALLS)
   assert.deepEqual(finals.map((f, i) => [i, f]).filter(([, f]) => f), [[MAX_CALLS - 1, true]], '最後の 1 回だけ道具なし')
+  assert.ok(lastParts.some((p) => /道具はもう使えません/.test(p.text ?? '')), '最後の 1 回は、答えるように文でも頼む')
   assert.equal(r.proposals.length, 1)
   assert.doesNotMatch(r.reply, /止まりました/, 'うまくいった案があるのに「止まりました」と言わない')
   assert.match(r.reply, /用紙に入れる/)
@@ -174,6 +177,24 @@ test('read_form: document で、同じ利用者のほかの書類（アセスメ
   // 指示文に、読めるほかの書類を書く
   assert.match(seen[0].system, /ほかの書類[^\n]*アセスメント（document: "assessment"）/)
   assert.doesNotMatch(chatSystem('admission', []), /ほかの書類:/)
+})
+
+test('read_form: 開いている書類の空の欄は、形（中の項目・選択肢）つきで返す。長すぎる書類（アセスメント）は形を省き、語で絞らせる', async () => {
+  const admission: ChatDocument = { kind: 'admission', fields: {} }
+  const { model, seen } = scripted([[call('read_form')], [{ text: '読みました' }]])
+  await runChat({ model, document: admission, recordings, messages: [{ role: 'user', text: '埋めて' }] })
+  const adm = responseOf(seen, 1, 'read_form')
+  const household = adm.empty.find((f: any) => f.key === 'outlook.household')
+  assert.equal(household.shape.type, 'object')
+  assert.ok(household.shape.fields.length > 0, '1 回読めば、まとまりの欄の案を組み立てられる')
+  assert.equal(adm.hint, undefined)
+
+  const big = scripted([[call('read_form')], [{ text: '読みました' }]])
+  await runChat({ model: big.model, document: doc, recordings, messages: [{ role: 'user', text: '埋めて' }] })
+  const assess = responseOf(big.seen, 1, 'read_form')
+  assert.ok(assess.empty.length > 50)
+  assert.ok(assess.empty.every((f: any) => f.shape === undefined && f.type))
+  assert.match(assess.hint, /query/)
 })
 
 test('書き換えの案の確かめ: 文章の欄は文、選択肢の欄は選択肢の文字、まとまりの欄は今の値と同じ形の JSON', () => {

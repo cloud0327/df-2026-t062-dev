@@ -45,6 +45,8 @@ const TEXT_TYPES = new Set(['text', 'longtext'])
 /** 値を文字のまま受ける欄。ほかの欄（まとまり・数・はい／いいえ・複数選ぶ）は JSON で受ける */
 const PLAIN_TYPES = new Set(['text', 'longtext', 'enum', 'date'])
 const MAX_HITS = 40
+/** 空の欄の形を返す長さの上限（字）。入院時情報提供書は収まり、アセスメントは収まらないので語で絞らせる */
+const SHAPE_BUDGET = 8000
 
 const formFields = (kind: FormKind) => FIELD_LIST.filter((f) => f.forms?.[FORM_KEY[kind]])
 const isEmpty = (v: unknown) => v === null || v === undefined || v === '' || (Array.isArray(v) && v.length === 0)
@@ -92,9 +94,10 @@ ${otherDocs}
 2. 欄を書いて・直して・短くしてなどと頼まれたら、read_form（欄の名前の語で絞る）でその欄の今の値と形を読み、必要なら search_records で根拠を探してから、propose_edit で案を出す。文章の欄だけでなく、相談者・家族の表などのまとまりの欄や選択肢の欄にも案を出せる。value はその欄の新しい値の全体（まとまりの欄は今の値をもとにした JSON）。頼まれていないのに案を出さない。
 3. 用紙に見えている文字が値にないときは、read_form の printed（印字するときだけ付く印などの様式の決まり）を確かめる。印の意味を説明し、それでも消したいと言われたら、印のもとになる項目を変える案を出す。
 4. 足りないところ・埋まっていない欄を聞かれたら、missing_fields を使う。埋め方（面談で聞く／書類から）ごとにまとめて答える。
-5. ほかの書類から流用して・写してと頼まれたら、read_form（document なし）でこの書類の空の欄を確かめ、read_form（document にほかの書類）で中身を読んでから、この書類の空の欄に合うものを propose_edit で出す（案は何件でもよい。同じ道具の呼び出しは 1 回の答えにまとめて並べてよい）。同じ key の欄はそのまま写し、違う欄はほかの書類の中身からこの欄に合うように要約する。ほかの書類に書いていないことは書かない。案を出せるのは、開いている書類の欄だけ。
-6. 録音がない（recordings: 0）と分かったら、もう search_records を使わない。同じ道具を同じ語で何度も呼ばない。案を出したら、それ以上調べずに答えを書く。
-7. あなたは用紙に直接は書けない。出した案は、ケアマネが画面の「用紙に入れる」を押したときに入る。保存・PDF・外に送ることもできないので、頼まれたら画面のボタンで行うよう伝える。
+5. 読むときは、要る呼び出しを 1 回の答えにまとめて並べる（read_form を語ごとに何回にも分けない）。呼べる回数には限りがある。
+6. ほかの書類から流用して・写してと頼まれたら、read_form（document なし）でこの書類の空の欄を確かめ、read_form（document にほかの書類）で中身を読んでから、この書類の空の欄に合うものを propose_edit で出す（案は何件でもよい。同じ道具の呼び出しは 1 回の答えにまとめて並べてよい）。同じ key の欄はそのまま写し、違う欄はほかの書類の中身からこの欄に合うように要約する。ほかの書類に書いていないことは書かない。案を出せるのは、開いている書類の欄だけ。
+7. 録音がない（recordings: 0）と分かったら、もう search_records を使わない。同じ道具を同じ語で何度も呼ばない。案を出したら、それ以上調べずに答えを書く。
+8. あなたは用紙に直接は書けない。出した案は、ケアマネが画面の「用紙に入れる」を押したときに入る。保存・PDF・外に送ることもできないので、頼まれたら画面のボタンで行うよう伝える。
 
 ## 書き方
 - 文章は、要点を短い文にして「。」でつなぐ。本人・家族の思いや専門職の見立てなど、誰の話かで意味が変わるものは、誰の話か分かるように書く（例:「左側に残渣あり（ST）」）。
@@ -144,7 +147,7 @@ function readForm(doc: ChatDocument, query: unknown, other = false) {
   const pick = (f: FieldSpec) => !ts.length || matches(`${f.label} ${f.key}`, ts)
   const filled: { key: string, label: string, type: string, value: string, shape?: Shape, printed?: string }[] = []
   const emptyText: { key: string, label: string, note?: string }[] = []
-  const empty: { key: string, label: string, shape: Shape }[] = []
+  const empty: { key: string, label: string, type: string, shape?: Shape }[] = []
   for (const f of formFields(doc.kind)) {
     if (!pick(f)) continue
     const v = doc.fields[f.key]?.value
@@ -153,11 +156,13 @@ function readForm(doc: ChatDocument, query: unknown, other = false) {
     const shape = ts.length && !TEXT_TYPES.has(f.type) ? shapeOf(f) : undefined
     if (!isEmpty(v)) filled.push({ key: f.key, label: f.label, type: f.type, value: show(v), ...(shape ? { shape } : {}), ...(printed ? { printed } : {}) })
     else if (TEXT_TYPES.has(f.type)) emptyText.push({ key: f.key, label: f.label, ...(f.note ? { note: f.note } : {}) })
-    else if (shape && f.type !== 'image') empty.push({ key: f.key, label: f.label, shape })
+    else if (f.type !== 'image') empty.push({ key: f.key, label: f.label, type: f.type, shape: shapeOf(f) })
   }
   // ほかの書類には案を出せないので、空の欄は返さない
   if (other) return { document: FORM_NAME[doc.kind], filled }
-  return ts.length ? { document: FORM_NAME[doc.kind], filled, emptyText, empty } : { document: FORM_NAME[doc.kind], filled, emptyText }
+  // 空のまとまりの欄も、形つきで返す（1 回読めば案を組み立てられる）。長すぎるときは形を省き、語で絞らせる
+  if (ts.length || JSON.stringify(empty).length <= SHAPE_BUDGET) return { document: FORM_NAME[doc.kind], filled, emptyText, empty }
+  return { document: FORM_NAME[doc.kind], filled, emptyText, empty: empty.map(({ shape: _, ...e }) => e), hint: '欄が多いので、空の欄の形（中の項目・選択肢）は省いた。query で欄の名前を絞って読むと返す' }
 }
 
 function missingFields(doc: ChatDocument) {
@@ -210,6 +215,7 @@ export function checkProposal(doc: ChatDocument, key: unknown, value: unknown): 
 }
 
 const STOPPED = 'ごめんなさい、調べている途中で止まりました。聞きたいことを短くして、もう一度相談してください。'
+const FINAL_ASK = '（道具はもう使えません。ここまでに分かったことと、出した案を、ケアマネに短く答えてください）'
 const PROPOSED = '書き換えの案を出しました。下のカードを見て、よければ「用紙に入れる」を押してください。'
 const FALLBACK = 'うまく答えられませんでした。言い方を変えて、もう一度聞いてください。'
 
@@ -230,6 +236,8 @@ export async function runChat({ model, document, others = [], recordings, messag
 
   for (let n = 0; n < MAX_CALLS; n++) {
     const final = n === MAX_CALLS - 1
+    // 最後の 1 回は、道具を止めるだけでなく、答えるように文でも頼む
+    if (final && n > 0) contents.at(-1)!.parts.push({ text: FINAL_ASK })
     const parts = await model({ system, contents, tools: TOOLS, final })
     // 最後の 1 回に道具を呼んできても、もう使わない
     const calls = final ? [] : parts.filter((p) => p.functionCall?.name)
