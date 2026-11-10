@@ -24,7 +24,7 @@ test('面談の話題は、実際の用紙にあり必須の空欄をフィー�
   assert.equal(missing.has('cert.expectedCareLevel'), false)
   assert.equal(missing.has('complaint.family'), false)
   const hints = availableTopics(values, targets)
-  assert.ok(hints.every(({ keys }) => keys.every((key) => missing.has(key) && targets.has(key))))
+  assert.ok(hints.every((topic) => topic.hints.every(({ key }) => missing.has(key) && targets.has(key))))
   assert.ok(!hints.some(({ title }) => title === 'ご本人の感じ方'))
   assert.equal(targets.get('complaint.person')?.pageIndex, 0)
   assert.equal(targets.get('survey.2_5')?.pageIndex, 5)

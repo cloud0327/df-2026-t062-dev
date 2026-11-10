@@ -70,7 +70,6 @@ button.assistant-card:hover, .assistant-header button:hover { border-color: #bda
 .assistant-topic { display: flex; align-items: baseline; gap: 8px; padding: 0 8px; }
 .assistant-topic > .assistant-icon { align-self: flex-start; margin-top: 3px; color: var(--pet-purple); font-size: 17px; }
 .assistant-topic h3 { margin: 0; font-size: 15px; line-height: 1.4; font-weight: 800; }
-.assistant-topic small { display: block; margin-top: 2px; color: #564d66; font-size: 12px; line-height: 1.45; }
 .assistant-menu .assistant-card { min-height: 89px; padding: 13px clamp(12px, 8cqw, 33px); gap: 21px; background: #fff; }
 .assistant-menu .assistant-card:first-child { border-color: #9a58e7; box-shadow: inset 0 0 0 1px #9a58e7, var(--pet-shadow); background: #f4edff; }
 .assistant-menu .assistant-card strong { font-size: clamp(18px, 5.8cqw, 24px); }
@@ -93,10 +92,12 @@ button.assistant-card:hover, .assistant-header button:hover { border-color: #bda
 .assistant-review-dot { width: 16px; height: 16px; border-radius: 50%; background: #f4bb08; }
 .assistant-panel .assistant-topic-targets { padding: 4px 8px; }
 .assistant-topic-targets button {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;
-  padding: 6px 9px; min-height: 38px; text-align: left; background: transparent;
-  border: 0; border-bottom: 1px solid var(--pet-line);
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: baseline; gap: 6px; width: 100%;
+  padding: 6px 7px 6px 15px; min-height: 34px; text-align: left; background: transparent;
+  border: 0; border-radius: 6px; font-size: 14px;
 }
+.assistant-topic-bullet { color: var(--pet-purple); }
+.assistant-topic-targets button > .assistant-icon { align-self: center; color: #685d7d; font-size: 12px; }
 .assistant-topic-targets button:hover { background: #eee5fb; }
 .assistant-panel :is(.assistant-empty, .assistant-error) { margin: 10px 3px; }
 .assistant-error { color: #9e2424; }
