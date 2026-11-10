@@ -33,3 +33,27 @@ export function normalizeValue(key: string, value: unknown): unknown {
   if (key === 'dailySchedule' && Array.isArray(value)) return mergeSchedule(value as Row[])
   return value
 }
+
+const isBlank = (v: unknown) => v === null || v === undefined || v === ''
+
+/** まとまりの欄（object・list）の空の項目（null・undefined・空文字）を落とす。表の行そのものは落とさない */
+export function compactValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(compactValue)
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).filter(([, v]) => !isBlank(v)).map(([k, v]) => [k, compactValue(v)]))
+  }
+  return value
+}
+
+function canonical(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(canonical)
+  if (v && typeof v === 'object') return Object.fromEntries(Object.keys(v).sort().map((k) => [k, canonical((v as Record<string, unknown>)[k])]))
+  return v
+}
+
+/** 同じ値か。項目の並び（DB の jsonb は並べ替える）と、空の項目の有無は見ない。空と null も同じ */
+export function sameValue(a: unknown, b: unknown): boolean {
+  const x = isBlank(a) ? null : compactValue(a)
+  const y = isBlank(b) ? null : compactValue(b)
+  return JSON.stringify(canonical(x)) === JSON.stringify(canonical(y))
+}

@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { SurveyImport } from '../survey/SurveyImport.tsx'
 import type { SurveyPreview } from '../survey/readSurvey.ts'
+import { PetChat } from './PetChat.tsx'
 import { PetIcon, PetMessage } from './PetVisuals.tsx'
+import type { ChatEntry } from './petChat.ts'
 import { fieldLabel, type availableTopics, type ReviewItem } from './petAssessment.ts'
 import './PetHelper.css'
 
@@ -9,6 +11,7 @@ const menus = [
   { id: 'documents', icon: 'file-earmark-arrow-down', title: '書類を取り込む' },
   { id: 'review', icon: 'check2-circle', title: '確認する' },
   { id: 'interview', icon: 'lightbulb', title: '面談のヒント' },
+  { id: 'revise', icon: 'pencil', title: '書き方を相談する' },
 ] as const
 
 type Menu = typeof menus[number]['id']
@@ -22,10 +25,15 @@ interface Props {
   onPreview: (preview: SurveyPreview) => number
   onIdentity: (sha256: string, confirmed: boolean) => void
   verifiedSources: ReadonlySet<string>
+  /** 書き方の相談（開いている書類。アセスメントでも入院時情報提供書でも使える） */
+  chat: { documentId: string | undefined, current: Record<string, unknown>, onSet: (key: string, value: unknown, mode: 'edit' | 'revert') => void }
 }
 
-export function PetHelper({ available, clientName, review, topics, onJump, onPreview, onIdentity, verifiedSources }: Props) {
+export function PetHelper({ available, clientName, review, topics, onJump, onPreview, onIdentity, verifiedSources, chat }: Props) {
   const [menu, setMenu] = useState<Menu | null>(null)
+  // 相談のやり取りは画面の中だけ。メニューを行き来しても残し、書類が変わったら消す
+  const [chatEntries, setChatEntries] = useState<ChatEntry[]>([])
+  useEffect(() => { setChatEntries([]) }, [chat.documentId])
   const [confirmed, setConfirmed] = useState(false)
   const [error, setError] = useState('')
   const body = useRef<HTMLDivElement>(null)
@@ -112,6 +120,10 @@ export function PetHelper({ available, clientName, review, topics, onJump, onPre
             </ul>
             {!topics.length && <p className="assistant-empty">{available ? '面談のヒントに対応する空欄はありません。' : 'アセスメントを開くと面談のヒントを表示します。'}</p>}
           </>
+        )}
+        {menu === 'revise' && (
+          <PetChat documentId={chat.documentId} entries={chatEntries} setEntries={setChatEntries} current={chat.current} onSet={chat.onSet}
+            onJump={available ? jump : undefined} />
         )}
         {error && <p className="assistant-error" role="alert">{error}</p>}
       </div>
