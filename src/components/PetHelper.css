@@ -71,7 +71,6 @@ button.assistant-card:hover, .assistant-header button:hover { border-color: #bda
 .assistant-topic h3 { margin: 0; }
 .assistant-topic small { margin-top: 3px; font-size: 13px; }
 .assistant-menu .assistant-card { min-height: 89px; padding: 13px clamp(12px, 8cqw, 33px); gap: 21px; background: #fff; }
-.assistant-menu .assistant-card:first-child { border-color: #9a58e7; box-shadow: inset 0 0 0 1px #9a58e7, var(--pet-shadow); background: #f4edff; }
 .assistant-menu .assistant-card strong { font-size: clamp(18px, 5.8cqw, 24px); }
 .assistant-menu .assistant-card small { font-size: clamp(14px, 4.5cqw, 18px); font-weight: 700; }
 .assistant-menu .assistant-card > .assistant-icon:first-child { font-size: clamp(25px, 10cqw, 40px); }
