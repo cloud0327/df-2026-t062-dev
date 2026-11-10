@@ -1,7 +1,7 @@
 // 画面の「書き方を相談する」の決めごと（src/components/petChat.ts）。
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { cardAction, historyFor, MAX_HISTORY, sentenceChanges, type ChatEntry, type ProposalCard } from '../src/components/petChat.ts'
+import { cardAction, historyFor, MAX_HISTORY, proposalChanges, sentenceChanges, type ChatEntry, type ProposalCard } from '../src/components/petChat.ts'
 
 const card = (over: Partial<ProposalCard> = {}): ProposalCard => ({ key: 'complaint.person', label: '相談内容（本人）', before: '前の文。', after: '新しい文。', state: 'ready', ...over })
 
@@ -43,4 +43,21 @@ test('案のカードの差分は、文の途中で切らずに、消える文�
   })
   assert.deepEqual(sentenceChanges(null, '農業を営んできた。'), { del: [], ins: ['農業を営んできた。'] })
   assert.deepEqual(sentenceChanges('同じ。', '同じ。足した。'), { del: [], ins: ['足した。'] })
+})
+
+test('まとまりの欄の案: 項目の並びが違うだけの今の値は、案を出したときのままとみなす', () => {
+  const c = card({ key: 'consulter', label: '相談者', before: { sex: '女', name: '春子' }, after: { name: '甲斐 春子', sex: '女' } })
+  assert.deepEqual(cardAction(c, { name: '春子', sex: '女', age: null }), { kind: 'set', value: { name: '甲斐 春子', sex: '女' }, next: 'applied' })
+  assert.deepEqual(cardAction(c, { name: '春子', sex: '男' }), { kind: 'stale' })
+})
+
+test('まとまりの欄の案のカードは、変わる項目を「名前：値」で出す（表は何行目か）', () => {
+  assert.deepEqual(proposalChanges('consulter', { sex: '女', name: '春子' }, { name: '甲斐 春子', sex: '女' }), { del: ['氏名：春子'], ins: ['氏名：甲斐 春子'] })
+  assert.deepEqual(proposalChanges('family.members',
+    [{ name: '雅史', relationship: '子' }, { name: '春子', isMainCaregiver: true }],
+    [{ name: '雅史', relationship: '子' }, { name: '春子', isMainCaregiver: false }]),
+  { del: ['2 行目 主たる介護者：はい'], ins: ['2 行目 主たる介護者：いいえ'] })
+  assert.deepEqual(proposalChanges('intake.method', '訪問', '電話'), { del: ['訪問'], ins: ['電話'] })
+  // 文章の欄は文ごと
+  assert.deepEqual(proposalChanges('complaint.person', '前の文。同じ文。', '新しい文。同じ文。'), { del: ['前の文。'], ins: ['新しい文。'] })
 })

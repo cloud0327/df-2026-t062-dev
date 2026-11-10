@@ -2,7 +2,7 @@
 import { useLayoutEffect, useRef, useState, type Dispatch, type FormEvent, type KeyboardEvent, type SetStateAction } from 'react'
 import { api } from '../lib/api.ts'
 import { PetIcon, PetMessage } from './PetVisuals.tsx'
-import { cardAction, historyFor, sentenceChanges, type ChatEntry, type ProposalCard } from './petChat.ts'
+import { cardAction, historyFor, proposalChanges, type ChatEntry, type ProposalCard } from './petChat.ts'
 
 interface Props {
   documentId: string | undefined
@@ -10,15 +10,15 @@ interface Props {
   setEntries: Dispatch<SetStateAction<ChatEntry[]>>
   /** 用紙の今の値（画面で直したばかりの値を含む） */
   current: Record<string, unknown>
-  onSet: (key: string, value: string | null, mode: 'edit' | 'revert') => void
+  onSet: (key: string, value: unknown, mode: 'edit' | 'revert') => void
   /** 用紙のその欄へ移る。移れない書類では undefined */
   onJump?: (key: string) => void
 }
 
 let nextId = 1
 
-function DiffLines({ before, after }: { before: string | null, after: string }) {
-  const { del, ins } = sentenceChanges(before, after)
+function DiffLines({ field, before, after }: { field: string, before: unknown, after: unknown }) {
+  const { del, ins } = proposalChanges(field, before, after)
   return (
     <>
       {del.map((t, i) => <p key={`d${i}`} className="assistant-chat-del"><span aria-label="消える文">−</span>{t}</p>)}
@@ -104,7 +104,7 @@ export function PetChat({ documentId, entries, setEntries, current, onSet, onJum
                   {onJump
                     ? <button type="button" className="assistant-chat-field" onClick={() => onJump(card.key)}>{card.label}<PetIcon name="chevron-right" /></button>
                     : <strong className="assistant-chat-field">{card.label}</strong>}
-                  <DiffLines before={card.before} after={card.after} />
+                  <DiffLines field={card.key} before={card.before} after={card.after} />
                   <div className="assistant-chat-actions">
                     {card.state === 'ready'
                       ? <button type="button" className="assistant-chat-apply" onClick={() => press(m.id, card)}><PetIcon name="pencil" />用紙に入れる</button>

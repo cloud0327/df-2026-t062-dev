@@ -19,7 +19,7 @@
 | `POST /api/documents/:id/sync-decisions` | 差異を欄ごとに「反映」または「今の記載を維持」。`{key,decision:"apply"\|"keep",source,target}` の両方が現在値と違えば 409。元の変更が未保存でも 409 | `{differences,document}` |
 | `POST /api/documents/:id/edits` | 用紙の印字欄の直し（`{formVersionId, edits:[{slot, text}]}`）。書類の行を止め、その時点の値に、様式の版の対応で 1 つずつ当てる。当てられない直しは理由を返す（ほかは当てる）。画面の様式の版が書類の版と違えば 409 | `{results:[{slot, reason?}], syncedTo, document}` |
 | `PATCH /api/documents/:id/fields` | 欄の値をそのまま変える直し（差分の欄の文章。`{changes:[{key, value, base, mode?}]}`）。`base` は画面が元にした値で、今の値と違えば 409（AI が書いたばかりの値を上書きしない）。`mode:"revert"` は「前の文に戻す」 | `{syncedTo, document}`（基本情報を直したら、ほかの書類の名前が `syncedTo` に入る） |
-| `POST /api/documents/:id/chat` | 書き方の相談（`{messages:[{role:"user"\|"pet", text}]}`。やり取りは画面が持っていて毎回全部を送る。最大 40 件・1 件 4000 字、最後は `user`）。AI（Gemini の関数呼び出し。`AI_PROVIDER=fake` なら台本の答え）が道具（用紙を読む・足りない欄・録音を探す・書き換えの案）を使って答える。書き換えの案は、この書類の様式の文章の欄だけ。**用紙は変えない**（画面が `PATCH /fields` で入れる） | `{reply, steps, proposals:[{key, label, before, after}]}`（`steps` は使った道具の作業ログ） |
+| `POST /api/documents/:id/chat` | 書き方の相談（`{messages:[{role:"user"\|"pet", text}]}`。やり取りは画面が持っていて毎回全部を送る。最大 40 件・1 件 4000 字、最後は `user`）。AI（Gemini の関数呼び出し。`AI_PROVIDER=fake` なら台本の答え）が道具（用紙を読む・足りない欄・録音を探す・書き換えの案）を使って答える。書き換えの案は、この書類の様式の欄（図の欄を除く。まとまりの欄は値の全体）。**用紙は変えない**（画面が `PATCH /fields` で入れる） | `{reply, steps, proposals:[{key, label, before, after}]}`（`steps` は使った道具の作業ログ） |
 | `POST /api/documents/:id/save` | 保存（`{scope:"document"}`／`{scope:"page", page}`／`{scope:"hunk", key, hunkIndex}`） | `{rev, document}` |
 | `GET /api/documents/:id/pdf` | 最新の版から、その版の様式の元の PDF で PDF を作る。出力の置き場にも残す。元の PDF が置き場になければ 503 | `application/pdf` |
 | `POST /api/clients/:id/recordings` | 録音を始める（`{mime}`）。Cloud Storage の再開できる送信の URL を返す | `201 {recordingId, uploadUrl}` |

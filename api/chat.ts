@@ -2,14 +2,19 @@
 // 道具: 用紙を読む（read_form）、足りない欄（missing_fields）、録音を探す（search_records）、書き換えの案（propose_edit）。
 // 案は返すだけで、用紙は変えない（ケアマネが画面で「用紙に入れる」を押したときに PATCH /fields で入る）。
 // 保存・PDF・外に送る道具は持たせない。指示文・答え・用紙の値はログに出さない。
-import { BY_KEY, FIELD_LIST, type FieldSpec } from '../core/fields.ts'
+import type { Binding } from '../core/binding.ts'
+import { BY_KEY, choicesOf, FIELD_LIST, subFieldsOf, type FieldSpec } from '../core/fields.ts'
 import type { FormKind } from '../core/form.ts'
+import { compactValue, sameValue } from '../core/normalize.ts'
 import { missingRequiredKeys } from '../core/required.ts'
 import { validValue } from '../core/schema.ts'
 import { PLACEMENT_RULES } from '../worker/vertex/prompts.ts'
+import ASSESSMENT_BINDINGS from '../forms/seed/assessment/bindings.json' with { type: 'json' }
+import ADMISSION_BINDINGS from '../forms/seed/admission/bindings.json' with { type: 'json' }
 
 export interface ChatMessage { role: 'user' | 'pet', text: string }
-export interface ChatProposal { key: string, label: string, before: string | null, after: string }
+/** before・after は欄の値（文章の欄は文、まとまりの欄は object や行の配列） */
+export interface ChatProposal { key: string, label: string, before: unknown, after: unknown }
 /** steps は AI が使った道具の作業ログ（1 行ずつ） */
 export interface ChatReply { reply: string, steps: string[], proposals: ChatProposal[] }
 
@@ -35,6 +40,8 @@ export const MAX_CALLS = 6
 
 const FORM_KEY: Record<FormKind, string> = { assessment: 'assess', admission: 'adm' }
 const TEXT_TYPES = new Set(['text', 'longtext'])
+/** 値を文字のまま受ける欄。ほかの欄（まとまり・数・はい／いいえ・複数選ぶ）は JSON で受ける */
+const PLAIN_TYPES = new Set(['text', 'longtext', 'enum', 'date'])
 const MAX_HITS = 40
 
 const formFields = (kind: FormKind) => FIELD_LIST.filter((f) => f.forms?.[FORM_KEY[kind]])
@@ -45,7 +52,7 @@ const matches = (text: string, ts: string[]) => ts.some((t) => text.includes(t))
 export const TOOLS: ToolDecl[] = [
   {
     name: 'read_form',
-    description: '開いている書類の用紙を読む。値のある欄（key・名前・型・値）と、まだ空の文章の欄を返す。query に語を入れると、欄の名前か key にその語を含む欄だけにする（空白で区切るとどれか）',
+    description: '開いている書類の用紙を読む。値のある欄（key・名前・型・値）と、まだ空の文章の欄を返す。printed は用紙に印字するときの決まり（値に入っていない印など）。query に語を入れると、欄の名前か key にその語を含む欄だけにし、まとまりの欄の形（shape: 中の項目と選択肢）と、空のまとまりの欄（empty）も返す（空白で区切るとどれか）',
     parametersJsonSchema: { type: 'object', properties: { query: { type: 'string', description: '欄の名前の一部（例: 入浴、相談内容）。全部読むときは空' } } },
   },
   {
@@ -60,7 +67,7 @@ export const TOOLS: ToolDecl[] = [
   },
   {
     name: 'propose_edit',
-    description: '文章の欄の書き換えの案を、ケアマネに出す。用紙には入らない（ケアマネが画面で「用紙に入れる」を押すと入る）。value はその欄の新しい文章の全体。通らない案は ok:false と理由を返す',
+    description: '欄の書き換えの案を、ケアマネに出す。用紙には入らない（ケアマネが画面で「用紙に入れる」を押すと入る）。value はその欄の新しい値の全体（一部だけにしない）。文章・選択肢 1 つ・日付の欄は値の文字のまま。まとまり（object・list）・複数選ぶ・数・はい／いいえの欄は、read_form の値と同じ形の JSON の文字列（今の値をもとに、変えるところだけ直す）。通らない案は ok:false と理由と欄の形（shape）を返す',
     parametersJsonSchema: { type: 'object', properties: { key: { type: 'string' }, value: { type: 'string' } }, required: ['key', 'value'] },
   },
 ]
@@ -71,9 +78,10 @@ export function chatSystem(kind: FormKind): string {
 
 ## 道具の使い方
 1. 利用者のことや用紙の中身を聞かれたら、read_form（用紙）や search_records（録音）で確かめてから答える。道具で見つからないことは「用紙にも録音にも出ていません」と答え、推測で埋めない。
-2. 欄を書いて・直して・短くしてなどと頼まれたら、read_form でその欄の今の値を読み、必要なら search_records で根拠を探してから、propose_edit で案を出す。value はその欄の新しい文章の全体（一部だけにしない）。頼まれていないのに案を出さない。
-3. 足りないところ・埋まっていない欄を聞かれたら、missing_fields を使う。埋め方（面談で聞く／書類から）ごとにまとめて答える。
-4. あなたは用紙に直接は書けない。出した案は、ケアマネが画面の「用紙に入れる」を押したときに入る。保存・PDF・外に送ることもできないので、頼まれたら画面のボタンで行うよう伝える。
+2. 欄を書いて・直して・短くしてなどと頼まれたら、read_form（欄の名前の語で絞る）でその欄の今の値と形を読み、必要なら search_records で根拠を探してから、propose_edit で案を出す。文章の欄だけでなく、相談者・家族の表などのまとまりの欄や選択肢の欄にも案を出せる。value はその欄の新しい値の全体（まとまりの欄は今の値をもとにした JSON）。頼まれていないのに案を出さない。
+3. 用紙に見えている文字が値にないときは、read_form の printed（印字するときだけ付く印などの様式の決まり）を確かめる。印の意味を説明し、それでも消したいと言われたら、印のもとになる項目を変える案を出す。
+4. 足りないところ・埋まっていない欄を聞かれたら、missing_fields を使う。埋め方（面談で聞く／書類から）ごとにまとめて答える。
+5. あなたは用紙に直接は書けない。出した案は、ケアマネが画面の「用紙に入れる」を押したときに入る。保存・PDF・外に送ることもできないので、頼まれたら画面のボタンで行うよう伝える。
 
 ## 書き方
 - 文章は、要点を短い文にして「。」でつなぐ。本人・家族の思いや専門職の見立てなど、誰の話かで意味が変わるものは、誰の話か分かるように書く（例:「左側に残渣あり（ST）」）。
@@ -85,18 +93,56 @@ ${PLACEMENT_RULES}`
 
 const show = (v: unknown) => (typeof v === 'string' ? v : JSON.stringify(v))
 
+type Shape = { type: string, choices?: string[], format?: string, fields?: Shape[] } & { key?: string, label?: string }
+
+/** 欄の形（AI が値を組み立てるための、中の項目・選択肢・日付の書き方） */
+function shapeOf(f: FieldSpec): Shape {
+  const c = choicesOf(f)
+  if (f.type === 'object' || f.type === 'list') {
+    return { type: f.type, fields: subFieldsOf(f).map((s) => ({ key: s.key, label: s.label, ...shapeOf(s) })) }
+  }
+  if (f.type === 'date') return { type: f.type, format: 'YYYY-MM-DD（年だけ・年月だけも可）' }
+  return { type: f.type, ...(c.length ? { choices: c } : {}) }
+}
+
+const BINDINGS: Record<FormKind, Record<string, Binding>> = {
+  assessment: ASSESSMENT_BINDINGS as unknown as Record<string, Binding>,
+  admission: ADMISSION_BINDINGS as unknown as Record<string, Binding>,
+}
+
+/** 用紙に印字するときだけ付く印（値には入らない）。様式の対応（bindings の prefix）から作る */
+function printedNotes(kind: FormKind): Map<string, string> {
+  const out = new Map<string, string>()
+  for (const b of Object.values(BINDINGS[kind])) {
+    if (b.op !== 'text@1' || !b.prefix) continue
+    const f = BY_KEY.get(b.ref.key)
+    if (!f || out.has(f.key)) continue
+    const sub = (k: unknown) => subFieldsOf(f).find((s) => s.key === k)
+    const flag = sub(b.prefix.flag)
+    const target = sub(b.ref.path?.at(-1))
+    out.set(f.key, `用紙では、${b.prefix.flag}（${flag?.label ?? b.prefix.flag}）が true の行の${target?.label ?? '文字'}の前に「${b.prefix.text}」を付けて印字する（様式の決まりの印。値には「${b.prefix.text}」は入っていない）`)
+  }
+  return out
+}
+const PRINTED: Record<FormKind, Map<string, string>> = { assessment: printedNotes('assessment'), admission: printedNotes('admission') }
+
 function readForm(doc: ChatDocument, query: unknown) {
   const ts = terms(query)
   const pick = (f: FieldSpec) => !ts.length || matches(`${f.label} ${f.key}`, ts)
-  const filled: { key: string, label: string, type: string, value: string }[] = []
+  const filled: { key: string, label: string, type: string, value: string, shape?: Shape, printed?: string }[] = []
   const emptyText: { key: string, label: string, note?: string }[] = []
+  const empty: { key: string, label: string, shape: Shape }[] = []
   for (const f of formFields(doc.kind)) {
     if (!pick(f)) continue
     const v = doc.fields[f.key]?.value
-    if (!isEmpty(v)) filled.push({ key: f.key, label: f.label, type: f.type, value: show(v) })
+    const printed = PRINTED[doc.kind].get(f.key)
+    // 形は語で絞ったときだけ（全部の欄の選択肢を返すと長くなる）
+    const shape = ts.length && !TEXT_TYPES.has(f.type) ? shapeOf(f) : undefined
+    if (!isEmpty(v)) filled.push({ key: f.key, label: f.label, type: f.type, value: show(v), ...(shape ? { shape } : {}), ...(printed ? { printed } : {}) })
     else if (TEXT_TYPES.has(f.type)) emptyText.push({ key: f.key, label: f.label, ...(f.note ? { note: f.note } : {}) })
+    else if (shape && f.type !== 'image') empty.push({ key: f.key, label: f.label, shape })
   }
-  return { filled, emptyText }
+  return ts.length ? { filled, emptyText, empty } : { filled, emptyText }
 }
 
 function missingFields(doc: ChatDocument) {
@@ -119,29 +165,33 @@ function searchRecords(recordings: ChatRecording[], query: unknown) {
   return { recordings: recordings.length, total: found.length, hits: found.slice(0, MAX_HITS) }
 }
 
+/** 案の値を欄の型の値にする。文章・選択肢・日付は文字のまま、ほかは JSON。読めなければ理由 */
+function parseValue(f: FieldSpec, raw: unknown): { value: unknown } | string {
+  if (typeof raw !== 'string') return { value: raw ?? null }
+  const t = raw.trim()
+  if (TEXT_TYPES.has(f.type)) return t ? { value: t } : '文が空です'
+  if (t === '' || t === 'null') return { value: null }
+  if (PLAIN_TYPES.has(f.type)) return { value: t }
+  try {
+    return { value: JSON.parse(t) }
+  } catch {
+    return 'JSON として読めません'
+  }
+}
+
 /** 書き換えの案を確かめる。通れば案、通らなければ理由（欄の名前つき） */
-function checkProposal(doc: ChatDocument, key: unknown, value: unknown): ChatProposal | string {
+export function checkProposal(doc: ChatDocument, key: unknown, value: unknown): ChatProposal | string {
   const f = typeof key === 'string' ? BY_KEY.get(key) : undefined
   if (!f) return `${String(key)}（その欄はありません）`
   if (!f.forms?.[FORM_KEY[doc.kind]]) return `${f.label}（この書類にない欄です）`
-  if (!TEXT_TYPES.has(f.type)) return `${f.label}（文章の欄ではありません）`
-  const after = typeof value === 'string' ? value.trim() : ''
-  if (!after || !validValue(f.key, after)) return `${f.label}（文が空です）`
-  const cur = doc.fields[f.key]?.value ?? null
-  if (cur !== null && typeof cur !== 'string') return `${f.label}（今の値が文章ではありません）`
-  if (cur === after) return `${f.label}（今の値と同じです）`
-  return { key: f.key, label: f.label, before: cur, after }
-}
-
-/** 書き換えの案のうち、通るものだけを残す（同じ欄は先の案） */
-export function acceptProposals(raw: unknown, doc: ChatDocument): ChatProposal[] {
-  if (!Array.isArray(raw)) return []
-  const out: ChatProposal[] = []
-  for (const p of raw) {
-    const r = checkProposal(doc, (p as { key?: unknown })?.key, (p as { value?: unknown })?.value)
-    if (typeof r !== 'string' && !out.some((x) => x.key === r.key)) out.push(r)
-  }
-  return out
+  if (f.type === 'image') return `${f.label}（図の欄は案を出せません）`
+  const parsed = parseValue(f, value)
+  if (typeof parsed === 'string') return `${f.label}（${parsed}）`
+  const after = f.type === 'object' || f.type === 'list' ? compactValue(parsed.value) : parsed.value
+  if (!validValue(f.key, after)) return `${f.label}（入れられない値です）`
+  const before = doc.fields[f.key]?.value ?? null
+  if (sameValue(before, after)) return `${f.label}（今の値と同じです）`
+  return { key: f.key, label: f.label, before, after }
 }
 
 const STOPPED = 'ごめんなさい、調べている途中で止まりました。聞きたいことを短くして、もう一度相談してください。'
@@ -180,7 +230,9 @@ export async function runChat({ model, document, recordings, messages }: {
       } else if (name === 'propose_edit') {
         const r = checkProposal(document, args.key, args.value)
         if (typeof r === 'string') {
-          response = { ok: false, reason: r }
+          const f = typeof args.key === 'string' ? BY_KEY.get(args.key) : undefined
+          // 欄はあるのに値が通らないときは、欄の形を返して組み立て直させる
+          response = { ok: false, reason: r, ...(f?.forms?.[FORM_KEY[document.kind]] && f.type !== 'image' ? { shape: shapeOf(f) } : {}) }
           steps.push(`案を作れませんでした：${r}`)
         } else {
           proposals.set(r.key, r)
