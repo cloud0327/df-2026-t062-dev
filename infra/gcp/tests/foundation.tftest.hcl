@@ -122,10 +122,14 @@ run "private_service_with_scoped_deployer" {
       toset([for e in google_cloud_run_v2_service.api.template[0].containers[0].env : e.name]) == toset([
         "AUTH_MODE", "FIREBASE_PROJECT_ID", "STORAGE_MODE", "GCS_SOURCE_BUCKET", "GCS_OUTPUT_BUCKET", "GCS_WORK_BUCKET", "GCS_FORMS_BUCKET",
         "QUEUE_MODE", "TASKS_QUEUE", "WORKER_URL", "TASKS_INVOKER_SA", "CLOUD_SQL_INSTANCE", "DB_USER", "DB_NAME",
+        "AI_PROVIDER", "GOOGLE_CLOUD_PROJECT", "GEMINI_MODEL", "GEMINI_LOCATION",
       ]) &&
       local.api_env["AUTH_MODE"] == "firebase" &&
       local.api_env["WORKER_URL"] == "https://t062-worker-123456789012.asia-northeast1.run.app" &&
-      local.api_env["DB_USER"] == "cloud-run-api-runtime@mock-project.iam"
+      local.api_env["DB_USER"] == "cloud-run-api-runtime@mock-project.iam" &&
+      local.api_env["AI_PROVIDER"] == local.worker_env["AI_PROVIDER"] &&
+      local.api_env["GEMINI_MODEL"] == local.worker_env["GEMINI_MODEL"] &&
+      local.api_env["GEMINI_LOCATION"] == local.worker_env["GEMINI_LOCATION"]
     )
     error_message = "The API environment must carry the variables the code reads."
   }
@@ -232,6 +236,7 @@ run "private_service_with_scoped_deployer" {
       google_storage_bucket_iam_member.speech_source_object_viewer.member == "serviceAccount:service-123456789012@gcp-sa-speech.iam.gserviceaccount.com" &&
       google_storage_bucket_iam_member.worker_work.role == "roles/storage.objectAdmin" &&
       google_project_iam_member.worker_vertex.role == "roles/aiplatform.user" &&
+      google_project_iam_member.api_vertex.role == "roles/aiplatform.user" &&
       google_project_iam_member.worker_speech.role == "roles/speech.client"
     )
     error_message = "Runtime roles must stay as scoped as designed."

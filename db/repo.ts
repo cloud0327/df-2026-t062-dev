@@ -211,6 +211,22 @@ export async function getDocument(db: Q, officeId: string, documentId: string): 
   }
 }
 
+/** 利用者の録音の文字起こし（古い順）。チャットの根拠に使う */
+export async function clientTranscripts(db: Q, officeId: string, clientId: string): Promise<{ recordedAt: string, utterances: { id: string, speaker: string, person?: string | null, text: string }[] }[]> {
+  const r = await db.query(
+    `SELECT r.recorded_at, t.utterances FROM transcripts t JOIN recordings r ON r.id = t.recording_id
+     WHERE t.office_id = $1 AND t.client_id = $2 ORDER BY r.recorded_at`,
+    [officeId, clientId],
+  )
+  return r.rows.map((x) => ({ recordedAt: new Date(x.recorded_at).toISOString(), utterances: x.utterances }))
+}
+
+/** 同じ利用者のほかの書類（書き方の相談で AI が読む）。同じ事業所の、同じ利用者のものだけ */
+export async function otherDocuments(db: Q, officeId: string, clientId: string, exceptId: string): Promise<DocumentView[]> {
+  const r = await db.query('SELECT id FROM documents WHERE office_id = $1 AND client_id = $2 AND id <> $3 ORDER BY created_at', [officeId, clientId, exceptId])
+  return Promise.all(r.rows.map((x) => getDocument(db, officeId, x.id as string)))
+}
+
 /** 入院時情報提供書と、その元になったアセスメントの差異。 */
 export async function getSyncDifferences(db: Q, officeId: string, targetId: string): Promise<SyncDifference[]> {
   const target = (await db.query("SELECT id, client_id, template_version_id FROM documents WHERE id = $1 AND office_id = $2 AND kind = 'admission'", [targetId, officeId])).rows[0]
